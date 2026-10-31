@@ -10,3 +10,4 @@ __pycache__/
 demo_artifacts/
 *.pyc
 .DS_Store
+wiki/exports/

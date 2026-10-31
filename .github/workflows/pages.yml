@@ -31,6 +31,10 @@ jobs:
         run: npm ci --prefix wiki
       - name: Build site
         run: node wiki/build.mjs
+      - name: Stage downloads
+        run: |
+          mkdir -p wiki/exports
+          cp exports/claude-code-game-studios.pdf exports/claude-code-game-studios.epub wiki/exports/
       - name: Check links
         run: python3 scripts/check_links.py
       - name: Test teaching model
