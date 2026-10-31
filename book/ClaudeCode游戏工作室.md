@@ -157,6 +157,8 @@ README 里有一张不寻常的表：四个游戏从同一份简报出发，在�
 
 第三层是事件回调。`settings.json` 把 15 个命令挂到 8 类事件上：SessionStart、PreToolUse、PostToolUse、Notification、PreCompact、Stop、SubagentStart、SubagentStop。这些脚本能读到工具调用的完整参数，能打印警告，也能用特定退出码改变行为。
 
+![四种约束：从常驻提示词到宿主权限，强制力逐级上升](../wiki/assets/diagrams/four-layers.svg)
+
 第四层是宿主权限。`settings.json` 的 `permissions` 段列出允许和拒绝的命令模式。例如 `Bash(rm -rf *)`、`Bash(git push --force*)`、`Read(**/.env*)` 在 deny 列表里。这一层由 Claude Code 自己执行，不依赖模型配合。
 
 四层的强制力差别很大。第四层是真正的外科手术刀，第三层只有部分事件能阻断，前两层是建议。
@@ -358,6 +360,8 @@ modes:
 3. 旧版纯文本镜像，例如 `production/review-mode.txt`、`production/stage.txt`。
 4. rigor 展开。
 5. 文档化的末端默认值。
+
+![配置解析链：第一个合法值胜出，非法枚举继续下落](../wiki/assets/diagrams/config-chain.svg)
 
 每一级都有两个动作：读到值后先做枚举校验，非法值丢弃并继续往下走，而不是让一个拼错的值污染所有技能。最终输出两列，值和来源。
 
@@ -675,6 +679,8 @@ Phase 5 派活。这里有一条重要约束：简报要点名文件，不粘贴
 Phase 6 检查结果。先看文件是否真的写出来了，再看测试是否存在，然后做解析检查，最后运行并观察。三个结果词被固定下来：`OBSERVED`、`NOT VERIFIED`、`N/A`。
 
 Phase 7 输出固定格式的总结，更新故事的 `## Files`，写会话检查点，最后打印三行收尾：故事状态、运行结果、下一步。
+
+![dev-story 的七个阶段：两道门禁与一个产物检查点](../wiki/assets/diagrams/dev-story.svg)
 
 ## 提问协议
 
@@ -1131,6 +1137,8 @@ Phase 7 规定的判决顺序是固定的，第一条匹配就生效：
 
 第二，信息行不算建议项。证据时间戳、缺少冲刺文件、运行结果这些只是信息，不会把 COMPLETE 变成 COMPLETE WITH NOTES。这个区分防止一份干净的故事因为环境差异被降级。
 
+![四态判决的优先级：失败高于未知，未知高于通过](../wiki/assets/diagrams/verdict-order.svg)
+
 ## 关闭是一次显式决定
 
 判决出来之后，技能会问："你想怎么处理？"
@@ -1196,6 +1204,8 @@ Phase 7 规定的判决顺序是固定的，第一条匹配就生效：
 | Stop | `session-stop.sh` | 1 |
 | SubagentStart | `log-agent.sh` | 1 |
 | SubagentStop | `log-agent-stop.sh`、`validate-agent-artifact.sh` | 2 |
+
+![十五个注册命令按事件分组，只有少数会阻断](../wiki/assets/diagrams/hook-map.svg)
 
 `hooks/` 目录里另外有三个脚本没有注册：`yaml-helper.sh` 是被 source 的库，`log-instructions.sh` 和 `update-check.sh` 需要手动或由其他脚本调用。所以"15 个 Hook"和"18 个脚本"都对，口径不同。
 
@@ -1439,6 +1449,8 @@ READ BY:    /design-system, /consistency-check, /review-all-gdds, /design-review
 `team.size` 是 rigor 展开的一部分。minimal 和 standard 都映射到 `individual`，只有 full 映射到 `studio`。
 
 理由很直接：token。七个代理各读一遍设计文档、各写一份报告，成本是单代理的数倍，收益不一定成比例。作者在 README 的对照实验里已经表明，更多流程买到的是可追溯性，不是更好的游戏。
+
+![team.size 的三档：正文点名的角色不一定真的派生](../wiki/assets/diagrams/team-collapse.svg)
 
 但塌缩有一个副作用：读技能正文的人会以为七个角色都跑了。所以正文强制要求在执行前声明：
 

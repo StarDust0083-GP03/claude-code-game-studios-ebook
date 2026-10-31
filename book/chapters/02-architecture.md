@@ -18,6 +18,8 @@
 
 第三层是事件回调。`settings.json` 把 15 个命令挂到 8 类事件上：SessionStart、PreToolUse、PostToolUse、Notification、PreCompact、Stop、SubagentStart、SubagentStop。这些脚本能读到工具调用的完整参数，能打印警告，也能用特定退出码改变行为。
 
+![四种约束：从常驻提示词到宿主权限，强制力逐级上升](../../wiki/assets/diagrams/four-layers.svg)
+
 第四层是宿主权限。`settings.json` 的 `permissions` 段列出允许和拒绝的命令模式。例如 `Bash(rm -rf *)`、`Bash(git push --force*)`、`Read(**/.env*)` 在 deny 列表里。这一层由 Claude Code 自己执行，不依赖模型配合。
 
 四层的强制力差别很大。第四层是真正的外科手术刀，第三层只有部分事件能阻断，前两层是建议。

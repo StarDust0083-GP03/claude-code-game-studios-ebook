@@ -7,10 +7,12 @@
 | 检查 | 命令 | 结果 |
 |---|---|---|
 | 阅读站构建 | `node wiki/build.mjs` | `Built 19 chapters, index, search, and book.html` |
+| 图表生成 | `python3 scripts/make_diagrams.py` | 6 幅 SVG，全部通过 XML 解析 |
+| 图表渲染 | 浏览器检查 | 6 幅内联 SVG，文字未越出 viewBox；深色主题填充正确 |
 | 本地链接与导出 | `python3 scripts/check_links.py` | `OK: 22 pages, all local links and exports resolve` |
 | 教学模型测试 | `python3 -m unittest discover -s examples -v` | `Ran 17 tests ... OK` |
-| PDF | headless Chromium `--print-to-pdf` | 139 页，A5，约 3.1 MB |
-| EPUB | `python3 scripts/make_epub.py` | 19 个章节，XML 全部可解析 |
+| PDF | headless Chromium `--print-to-pdf` | 144 页，A5，约 3.5 MB，图表文字可提取 |
+| EPUB | `python3 scripts/make_epub.py` | 19 个章节，6 幅 SVG 内联，XML 全部可解析 |
 
 ## 上游脚本实验
 

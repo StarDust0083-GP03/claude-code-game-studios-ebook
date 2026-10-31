@@ -9,11 +9,23 @@
 - 在线阅读：<https://stardust0083-gp03.github.io/claude-code-game-studios-ebook/>
 - `wiki/index.html`：分章目录、搜索、字号与主题切换。
 - `wiki/book.html`：内嵌样式与脚本的离线合订本。
+- `wiki/assets/diagrams/`：6 幅内联 SVG 架构图，随主题切换，可打印、可进 EPUB。
 - `exports/claude-code-game-studios.pdf`：A5，139 页。
 - `exports/claude-code-game-studios.epub`：EPUB 3，19 个章节。
 - `book/ClaudeCode游戏工作室.md`：合并书稿。
 - `RESEARCH_NOTES.md`：提纲、来源与争议点。
 - `sources/UPSTREAM.md`：上游快照与统计口径。
+
+## 图表
+
+六幅内联 SVG，随站点主题切换，也会进入 PDF 与 EPUB：
+
+1. 四种约束：常驻上下文、按需加载、Hook、宿主权限
+2. 配置解析链与非法枚举回落
+3. `/dev-story` 的七个阶段与两道门禁
+4. 四态判决的优先级
+5. Hook 事件与真实阻断范围
+6. `team.size` 的三档塌缩
 
 ## 这本书想回答的问题
 
@@ -33,6 +45,7 @@
 
 ```bash
 npm ci --prefix wiki
+python3 scripts/make_diagrams.py   # 生成 wiki/assets/diagrams/*.svg
 node wiki/build.mjs                 # 生成 wiki/index.html、章节页、搜索索引、book.html
 python3 scripts/make_epub.py       # 生成 exports/*.epub
 chromium --headless=new --no-sandbox --no-pdf-header-footer \

@@ -8,6 +8,7 @@ const bookDir = path.join(root, 'book');
 const chapterDir = path.join(bookDir, 'chapters');
 const outDir = path.join(here, 'chapters');
 const assetsDir = path.join(here, 'assets');
+const diagramDir = path.join(assetsDir, 'diagrams');
 fs.mkdirSync(outDir, { recursive: true });
 fs.mkdirSync(assetsDir, { recursive: true });
 
@@ -25,11 +26,20 @@ const items = [...chapterMatches, ...appendixMatches].map((m, i) => ({
 }));
 if (items.length !== 19) throw new Error(`Expected 19 sections, found ${items.length}`);
 
+function injectDiagrams(html) {
+  return html.replace(/<p><img src="[^"]*\/diagrams\/([a-z0-9-]+)\.svg" alt="([^"]*)"\s*\/?><\/p>/g, (_, name, caption) => {
+    const file = path.join(diagramDir, `${name}.svg`);
+    if (!fs.existsSync(file)) throw new Error(`Missing diagram: ${name}`);
+    return `<figure class="concept-diagram">${fs.readFileSync(file, 'utf8')}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+  });
+}
+
 const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const titleHtml = (s) => escapeHtml(s).replace(/`([^`]+)`/g, '<code>$1</code>');
 const titleText = (s) => s.replace(/`/g, '');
 const plain = (md) => md
   .replace(/<figure[\s\S]*?<\/figure>/g, ' ')
+  .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
   .replace(/```[\s\S]*?```/g, ' ')
   .replace(/`([^`]+)`/g, '$1')
   .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -57,7 +67,7 @@ const records = items.map((item) => {
   const bodyMd = md.replace(/^# .+\n/, '');
   const text = plain(bodyMd);
   const description = text.slice(0, 120);
-  const html = renderMarkdown(bodyMd);
+  const html = injectDiagrams(renderMarkdown(bodyMd));
   const headings = [...html.matchAll(/<h2 id="([^"]+)">([\s\S]*?)<a class="anchor"/g)].map(m => ({
     id: m[1], title: m[2].replace(/<[^>]+>/g, ''),
   }));
@@ -150,6 +160,6 @@ volume = volume.replace('<link rel="stylesheet" href="assets/reader.css">', `<st
 for (const r of records) volume = volume.replaceAll(`href="${r.href}"`, `href="#${r.slug}"`);
 volume = volume.replaceAll('href="index.html"', 'href="#main"').replace('<a class="tool-button" href="search.html" aria-label="搜索">搜索</a>', '<span class="tool-button">Ctrl+F 查找</span>');
 fs.writeFileSync(path.join(here, 'book.html'), volume);
-fs.writeFileSync(path.join(bookDir, 'ClaudeCode游戏工作室.md'), '# Claude Code 游戏工作室：从一堆提示词到一条可验收的流水线\n\n快照 05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418 · CCGS 1.2.0 · 2026-10-31\n\n'+records.map(r=>r.md).join('\n\n'));
+fs.writeFileSync(path.join(bookDir, 'ClaudeCode游戏工作室.md'), '# Claude Code 游戏工作室：从一堆提示词到一条可验收的流水线\n\n快照 05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418 · CCGS 1.2.0 · 2026-10-31\n\n'+records.map(r=>r.md.replaceAll('../../wiki/assets/diagrams/', '../wiki/assets/diagrams/')).join('\n\n'));
 
 console.log(`Built ${records.length} chapters, index, search, and book.html`);

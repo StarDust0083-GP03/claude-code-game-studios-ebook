@@ -186,3 +186,6 @@ main{min-height:calc(100vh - 62px)}
   @media(prefers-reduced-motion:reduce) {html{scroll-behavior:auto}.chapter-row,.control{transition:none}}
 }
 @media print {.reader-mobile-toc,.reader-book-toc,[data-reader-theme],.copy{display:none!important}}
+
+@media screen and (max-width:520px){.concept-diagram svg{min-width:560px}}
+@media print{.concept-diagram{break-inside:avoid;overflow:visible;padding:10px 0}.concept-diagram svg{min-width:0;width:100%;max-width:100%}.concept-diagram figcaption{font-size:8pt}}

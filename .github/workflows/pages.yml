@@ -30,7 +30,9 @@ jobs:
       - name: Install
         run: npm ci --prefix wiki
       - name: Build site
-        run: node wiki/build.mjs
+        run: |
+          python3 scripts/make_diagrams.py
+          node wiki/build.mjs
       - name: Stage downloads
         run: |
           mkdir -p wiki/exports

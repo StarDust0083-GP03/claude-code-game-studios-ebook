@@ -30,7 +30,8 @@ def sections() -> list[tuple[str, str, str]]:
 
 
 ALLOWED = set("""p br strong em code pre ul ol li blockquote h1 h2 h3 h4 h5 h6 a
-table thead tbody tr th td div span hr img section figure figcaption details summary""".split())
+table thead tbody tr th td div span hr img section figure figcaption details summary
+svg g path rect line circle ellipse polygon polyline text tspan marker defs title""".split())
 
 
 def clean(body: str) -> str:

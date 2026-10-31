@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 npm ci --prefix wiki
+python3 scripts/make_diagrams.py
 node wiki/build.mjs
 python3 scripts/make_epub.py
 CHROME="${CHROME:-chromium}"

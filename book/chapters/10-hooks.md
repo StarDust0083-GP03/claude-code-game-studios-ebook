@@ -25,6 +25,8 @@
 | SubagentStart | `log-agent.sh` | 1 |
 | SubagentStop | `log-agent-stop.sh`、`validate-agent-artifact.sh` | 2 |
 
+![十五个注册命令按事件分组，只有少数会阻断](../../wiki/assets/diagrams/hook-map.svg)
+
 `hooks/` 目录里另外有三个脚本没有注册：`yaml-helper.sh` 是被 source 的库，`log-instructions.sh` 和 `update-check.sh` 需要手动或由其他脚本调用。所以"15 个 Hook"和"18 个脚本"都对，口径不同。
 
 ## 能拦住的
