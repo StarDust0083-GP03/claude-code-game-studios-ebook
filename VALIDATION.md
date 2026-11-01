@@ -8,7 +8,8 @@
 |---|---|---|
 | 阅读站构建 | `node wiki/build.mjs` | `Built 19 chapters, index, search, and book.html` |
 | 图表生成 | `python3 scripts/make_diagrams.py` | 6 幅 SVG，全部通过 XML 解析 |
-| 图表渲染 | 浏览器检查 | 6 幅内联 SVG，文字未越出 viewBox；深色主题填充正确 |
+| 图表渲染 | 浏览器检查 | 6 幅内联 SVG，文字未越出 viewBox，文字两两无重叠；深色主题填充正确 |
+| 图表审查 | 位图预览 + 版面检查 | 修正 Hook 阻断表述、判决配色语义，补充颜色与门禁图例 |
 | 本地链接与导出 | `python3 scripts/check_links.py` | `OK: 22 pages, all local links and exports resolve` |
 | 教学模型测试 | `python3 -m unittest discover -s examples -v` | `Ran 17 tests ... OK` |
 | PDF | headless Chromium `--print-to-pdf` | 144 页，A5，约 3.5 MB，图表文字可提取 |

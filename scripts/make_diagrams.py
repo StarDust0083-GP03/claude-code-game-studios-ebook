@@ -52,7 +52,7 @@ def svg(height, title, body):
 
 
 def four_layers():
-    b = [t(8, 10, "强制力递增", 8.2, 600, "var(--muted)")]
+    b = [t(8, 10, "强制力递增 ↓", 8.2, 600, "var(--muted)")]
     rows = [
         ("常驻上下文", "CLAUDE.md 与 @ 导入的规则", "模型看得见，可以忽略", "建议"),
         ("按需加载", "SKILL.md、参考文档、Agent 提示词", "范围更窄，仍是文字", "较软"),
@@ -104,15 +104,16 @@ def dev_story():
         b.append(box(38, y, 374, 38, title, [note], accent=(i in (1, 5)), title_size=10))
         if i < len(phases) - 1:
             b.append(arrow(18, y + 32, 18, y + 50, color="var(--line)"))
-    b.append(t(8, 372, "P2 不通过：写 BLOCKED 检查点，不派代理。P6：报告不算完成，文件才算。", 9, 400, "var(--amber)"))
-    return svg(384, "dev-story 的七个阶段", "".join(b))
+    b.append(t(8, 370, "琥珀框 = 门禁或检查点。P2 不通过：写 BLOCKED 检查点，不派代理。", 9, 400, "var(--amber)"))
+    b.append(t(8, 386, "P6：报告不算完成，磁盘上的文件才算。", 8.6, 400, "var(--muted)"))
+    return svg(398, "dev-story 的七个阶段", "".join(b))
 
 
 def verdict_order():
     b = [t(8, 10, "排序：失败 > 无法评估 > 带备注通过 > 通过", 8.4, 600, "var(--ink)")]
     rows = [
         ("FAIL", "某条验收失败，或存在阻断级缺口", "BLOCKED", "var(--amber)"),
-        ("UNKNOWN", "无法评估：没说清、还没测、输入缺失", "NOT ASSESSED", "var(--forest)"),
+        ("UNKNOWN", "无法评估：没说清、还没测、输入缺失", "NOT ASSESSED", "var(--ink)"),
         ("PASS_WITH_NOTES", "全部通过或延期，但有建议级事项", "COMPLETE WITH NOTES", "var(--muted)"),
         ("PASS", "全部通过，没有建议级事项", "COMPLETE", "var(--forest)"),
     ]
@@ -134,7 +135,7 @@ def hook_map():
         ("PreToolUse Read", "validate-read", "阻断", "var(--forest)"),
         ("PreToolUse Write", "validate-registry · validate-write", "提醒", "var(--amber)"),
         ("PreToolUse Bash", "validate-commit · validate-push", "窄阻断", "var(--amber)"),
-        ("PostToolUse Write", "validate-assets · validate-skill", "反馈", "var(--forest)"),
+        ("PostToolUse Write", "validate-assets · validate-skill", "反馈", "var(--amber)"),
         ("PreCompact / Stop", "pre-compact · session-stop", "记录", "var(--muted)"),
         ("Subagent Start/Stop", "log-agent* · validate-agent-artifact", "记录/提醒", "var(--muted)"),
     ]
@@ -144,8 +145,9 @@ def hook_map():
         b.append(t(112, y + 16, scripts, 8.4, 400, "var(--muted)"))
         b.append(badge(346, y + 4, effect, color))
         b.append(f'<line x1="8" y1="{y + 26}" x2="412" y2="{y + 26}" stroke="var(--line)" stroke-width="0.6"/>')
-    b.append(t(8, 362, "15 条注册命令；硬阻断只有 validate-read。", 9, 400, "var(--muted)"))
-    return svg(374, "Hook 事件与效果", "".join(b))
+    b.append(t(8, 360, "写入前硬阻断只有 validate-read；validate-commit 只阻断数据 JSON。", 8.6, 400, "var(--muted)"))
+    b.append(t(8, 376, "绿 = 硬阻断 · 琥珀 = 提醒或反馈 · 灰 = 记录", 8.6, 400, "var(--muted)"))
+    return svg(388, "Hook 事件与效果", "".join(b))
 
 
 def team_collapse():
