@@ -71,7 +71,8 @@ def main() -> None:
         match = re.search(r'<article class="chapter">([\s\S]*?)</article>', source)
         body = clean(match.group(1) if match else source)
         files[f"{cid}.xhtml"] = xhtml(title, body, css)
-        manifest.append(f'<item id="{cid}" href="{cid}.xhtml" media-type="application/xhtml+xml"/>')
+        properties = ' properties="svg"' if '<svg ' in body else ''
+        manifest.append(f'<item id="{cid}" href="{cid}.xhtml" media-type="application/xhtml+xml"{properties}/>')
         spine.append(f'<itemref idref="{cid}"/>')
         nav_items.append(f'<li><a href="{cid}.xhtml">{html.escape(title)}</a></li>')
 
