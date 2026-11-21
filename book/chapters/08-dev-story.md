@@ -1,158 +1,93 @@
 # 第 08 章 实施链路：`/dev-story` 怎么把故事变成代码
 
-## 场景
+## 场景：别信模型写的漂亮总结，先看硬盘上有没有文件
 
-故事已经就绪：`story-003-melee-parry.md`，Core 层，Logic 类型，ADR 已接受，依赖故事全部完成。你输入 `/dev-story production/epics/stealth/story-003-melee-parry.md`。
+你手里已经有一份就绪的故事 `production/epics/stealth/story-003-melee-parry.md`：Core 层、Logic 类型、ADR 已批准、前置依赖都已关闭。敲下 `/dev-story production/epics/stealth/story-003-melee-parry.md`。
 
-接下来发生的事情可以分成两条线：一条是文本处理线，决定模型看到什么；一条是实际执行线，决定磁盘上多出什么文件。这一章顺着两条线走一遍。
+接下来发生的事，拆开看其实是两条并行推进的线：**一条管“往模型脑子里喂什么上下文”，另一条管“硬盘上到底落了什么文件、跑出了什么结果”**。v1.3.0 还在这条链路上补齐了 Web 引擎的冒烟检查、Grow 项目的同种子回放，以及让程序员老实招供自己擅自拍了哪些板（`Own calls`）。
 
-## 第一步：把故事变成事实表
+## 第一步：先用脚本把故事读成事实表
 
-技能调用 `story-facts.sh <story-path>`，拿到状态、类型、层、需求 ID、ADR、验收条件数量、测试证据状态、依赖。脚本只输出观察，不输出判决。
+技能不会一上来就靠记忆猜故事在哪，而是先调 `.claude/scripts/story-facts.sh <story-path>` 抓出一张 TSV 事实表：状态、类型、架构层、TR-ID、ADR、验收标准条数、测试证据状态、前置依赖。要是你敲 `/dev-story` 没带参数，它先看 `active.md` 检查点里的当前任务向你确认；检查点里也没有，就跑 `story-facts.sh --all` 把所有 `TODO` 故事列成选项让你选。
 
-在没有故事的模板仓库上运行 `story-facts.sh --all`，输出是一张空表：
+记住仓库那条铁律：脚本只吐观察结果，绝不下结论。盘里一个故事都没有时，直接停止并告诉你先去跑 `/create-stories`，不乱猜。
 
-```
-stories	0	production/epics/**/story-*.md
-complete	0
-in_review	0
-in_progress	0
-todo	0
-blocked	0
-other	0
-no_status	0
-```
+## 第二步：按系统算档位，不拿全局 `rigor` 一刀切
 
-`story-status.sh` 更短，只有一行 `STORIES none`。这两个脚本的价值在于：当模型问"有哪些故事可以做"时，答案来自磁盘，而不是来自记忆。
+正文开头 `!` 注入的配置里已经带齐了 `workflow`、`qa.level`、`gate_level`、`specialists`、`perf_budgets`、`system_overrides`。注意 `/dev-story` 决定前置检查有多严时，看的是**当前故事所属系统的 `workflow` 档位**：从故事的 `GDD:` 路径提取系统名，先查 `system_overrides` 里有没有单独给这个系统加码，没有再退回全局 `workflow`。
 
-## 第二步：解析工作档位
+所以你可以整仓跑 `minimal` 快速推进，唯独把战斗系统钉在 `full`——写到战斗故事时，Phase 2 自动严查注册表和 Accepted ADR，写别的系统照样轻装上阵。第一条回复就会明确印出 `Tier: workflow <value>`，绝不把 `rigor` 或 `qa.level` 混进来用。
 
-技能注入的配置里有 `workflow`、`qa.level`、`gate_level`、`specialists`、`perf_budgets`、`system_overrides`。工作档位不是全局 rigor，而是按故事所属系统解析的：故事里的 `GDD:` 路径给出系统名，先查该系统的覆盖，再查项目值。
+## 第三步：前置门禁（不通过直接写 BLOCKED，不派代理）
 
-所以一个项目可以整体 minimal，只把战斗系统提到 full。此时战斗故事的 Phase 2 会要求需求注册表和 Accepted ADR，其他故事不受影响。
+Phase 2 照着三列表拦门：
 
-## 第三步：检查是否允许开始
-
-Phase 2 是一张三列表，按档位给出不同要求：
-
-| 输入 | full | standard | minimal |
+| 前置输入 | `full` | `standard` | `minimal` |
 |---|---|---|---|
-| 需求注册表 | 缺失则停止 | 可选 | 不期待 |
-| 故事点名的 ADR | 缺失或非 Accepted 则停止 | 只在点名时检查 | 只在点名时检查 |
-| 控制清单 | 缺失则警告，继续 | 缺失则警告，继续 | 不期待 |
+| TR 需求注册表 | 缺失直接停（让你先 `/architecture-review`） | 可选 | 不要求 |
+| 故事点名的 ADR | 缺失 / `Proposed` / `Deprecated` / `Superseded` 直接停 | 故事点名了才查 | 故事点名了才查 |
+| 控制清单 | 缺失发警告，继续 | 缺失发警告，继续 | 不要求 |
 
-依赖检查独立于档位。每个依赖故事都要跑一次 `story-facts.sh`，状态不是 Complete 就停下来问用户：继续承担风险、先去完成依赖、还是它其实完成了只是状态没更新。
+这里有两处很实的防呆：
+- **ADR 默认不打开原文**：先调 `adr-status.sh <ADR-ID>` 拿状态和版本号，跟故事里的 `ADR Version` 对得上就直接信故事摘要；对不上才去读 `references/version-mismatch.md`。
+- **依赖故事逐个核查**：对每个前置依赖跑 `story-facts.sh`，只要不是 `COMPLETE`，立刻停下来问你三个选项——自担风险硬上、先停下做依赖、还是其实做完了只是忘了改状态（选第三个也会先问你“能把依赖故事改成 Complete 吗”再动手）。
 
-这里有一个细节：脚本读的是状态字段，不是 git 历史或文件内容。状态没更新，它就会认为没完成。仓库选择相信声明，同时把判断权交给用户。
+只要上面任何一项触发了停止，**绝不派程序员代理**，直接跳去 Phase 7 写一条 `BLOCKED` 检查点收尾。通过了则进 Phase 3，只问一次能不能把故事标成 `In Progress`（如果你拒绝，它不改状态文件，但照样往下写代码，并在总结里诚实记一笔 `Story not marked In Progress — declined`）。
 
-## 第四步：确定代码根
+## 第四步：代码根不瞎猜
 
-写代码之前必须先回答"代码写到哪里"。`code-root-resolution.md` 给出的顺序是：
+写代码前必须先算清代码往哪放。按 `.claude/docs/code-root-resolution.md`（详见第 13 章），先查 `project.yaml` 的 `engine.code_root`（填错了直接报 `invalid` 不回退），再查 `engine.name` 对应 `.claude/engines/engines.tsv` 的行，再查旧版 `technical-preferences.md`，最后才在 `src/`、`Assets/`、`Source/` 恰好只存在一个时做无歧义推断。
 
-1. `engine.name` 从 `project.local.yaml` 再 `project.yaml` 读。
-2. 旧版镜像 `.claude/docs/technical-preferences.md` 里的 `Engine:` 行。
-3. 目录推断，但只在无歧义时：`src/`、`Assets/`、`Source/` 中恰好存在一个。
-4. 否则：未解析。
+**要是怎么都解析不出来，或者配置非法，直接罢工不写**。绝不偷懒默认往 `src/` 塞——因为在 Unity 里往 `src/` 写代码根本不参与编译，写几百行全白干；测试放错目录更坑，Unity 测试运行器直接给你绿油油地印出一行 `0 tests, Passed`。
 
-未解析时不是默认到 `src/`，而是停止写入并报告。文档给出的理由很直接：Unity 项目里写到 `Assets/` 之外的代码不会被编译，也不会出现在编辑器里，工作安静地失效。
+## 第五步：按表派人 + 蒸馏简报
 
-测试根同理。Unity 的测试要放 `Assets/Tests/EditMode/` 或 `PlayMode/`，放错位置的结果是测试运行器显示"0 tests, Passed"。这个输出看起来像通过，实际上是没跑。
+Phase 4 的选人规则很简单：Config/Data 类型的故事根本不用派代理，直接在主会话里列出 `旧值 → 新值`，征得你同意就改数据文件跳去 Phase 6；代码故事按架构层和类型派给对应的通用程序员（Foundation → `engine-programmer`，UI → `ui-programmer`，Visual/Feel → `gameplay-programmer`，AI → `ai-programmer`，网络 → `network-programmer`）。
 
-## 第五步：选择执行者
+写完后再把改动文件交给引擎专家过一遍引擎 API 坑点（只审查、吐出“文件 + 行号 + 问题 + 修法”，不直接改代码；破验收标准的打回给程序员修一次）。槽位直接读配置里的 `specialists`（靠 `code` 槽位区分 Godot GDScript 和 Godot C#）。注意 v1.3.0 对 **Web 引擎** 的处理：Web 没有单独的引擎专家角色，直接由 `lead-programmer` 对照 `docs/engine-reference/web/` 顶上。
 
-Phase 4 用两张表。第一张按故事选程序员：
+Phase 5 写给程序员的简报特别讲究，绝不把几十 KB 的文档整篇粘贴进去，而是精准投喂：
+- 给路径：故事文件、TR 注册表精确匹配行、控制清单对应层章节、命名规范、性能预算、测试路径；
+- 给内联：故事里的 ADR 摘要和实施说明（**故意不给 ADR 原文路径**）；
+- 缺什么就明说：Phase 2 没用到的输入（比如 `minimal` 下没有注册表），明确告诉子代理“这档位本来就没有，别浪费回合满仓库瞎找”，顺手也通知你一句；
+- 按 `qa.level` 定测试要求：`minimal` 时必须白纸黑字写一句“**不要写测试文件**”（省略不说，模型以为你忘了，会顺手照着通用角色规范把单测写了）；`standard` / `full` 要求每条验收标准至少配一个确定性测试（禁随机种子、禁时间敏感断言、禁外部 I/O）；
+- **v1.3.0 新增的两条代码规矩**：新增玩法数值必须写进数据文件（Grow 出来的 Web 项目放 `data/config.json` 并在 `data/config-notes.md` 记一行），不准硬编码；同时禁止写只用一次的过度抽象、禁止给不可能发生的分支加防御、禁止为了过测试硬写特判；最后要求程序员在汇报里**老实交待 `Own calls`——凡是设计和故事没写死、由它自己拍板定的数值、时机、颜色、边界行为和界面文案，逐条报出位置**，等着 `/story-done` 交给人类裁决。
 
-| 故事 | 角色 |
-|---|---|
-| Foundation 层，任意类型 | `engine-programmer` |
-| 类型 UI | `ui-programmer` |
-| 类型 Visual/Feel | `gameplay-programmer` |
-| Core 或 Feature，玩法 | `gameplay-programmer` |
-| Core 或 Feature，AI 或寻路 | `ai-programmer` |
-| Core 或 Feature，网络 | `network-programmer` |
+## 第六步：先验硬盘产物，再做解析、看图和同种子回放
 
-第二张按配置选引擎专家。`specialists` 行给出 `code`、`shader`、`ui`、`primary` 四个槽位，来自 `project.yaml`。例如 Godot C# 项目会配 `godot-csharp-specialist` 作为 `code`，这样即使 `engine.name` 只写 `Godot`，也能区分 GDScript 和 C#。
+Phase 6 是整条实施链路里最硬核的一段，一共卡了五道关：
 
-技能明确要求：不要凭记忆指定专家，以配置行为准。所有槽位都是 `unset` 且没有 `primary` 时，说明"未配置引擎专家"，然后继续，不阻塞。
+1. **先看有没有半途而废**：子代理撞上 `maxTurns` 或者半截停掉，必须大字报 `INCOMPLETE`，列出已有进展和断点，绝不准顶着“Implementation Complete”蒙混过关。
+2. **触发器 0——先看硬盘文件，再信汇报**：不管子代理总结写得多天花乱坠，它点名改过的文件要是硬盘上压根不存在，直接判这一步失败，拉起子代理指着缺失文件返工。
+3. **检查测试文件在不在**：`standard` / `full` 下查 Logic/Integration 故事的测试文件有没有落盘（依然只查存在性，绝不替你吹牛说“测试全过了”）。
+4. **引擎级解析与冒烟检查**：
+   - **Godot**：必须先跑 `godot --headless --path . --import`，再跑 `godot --headless --path . -s res://.claude/scripts/godot-parse-check.gd -- res://<改动的 .gd>`（看 `PARSE FAIL:`）。明令禁止拿 `--check-only` 敷衍，也禁止只跑 `--import` 就敢说解析过了。
+   - **Web（v1.3.0 新增）**：只要 `package.json` 里有 `smoke` 脚本，每个故事做完必跑 `npm run smoke`（包含 `tsc --noEmit` 类型检查、单文件构建和 Playwright `@boot` 启动测试）。明确点破：光跑 `npm run build:single` 只证明编译过，不证明网页能打开；绝不跑 `commands.run`（那是永不退出的 dev server）。
+   - **没装引擎或没跑 `npm ci`**：老老实实报 `parse NOT VERIFIED — <原因>`，严禁读两眼代码就嘴硬“看着应该能编译”。
+5. **运行观察（Run and Observe）+ 同种子回放（v1.3.0 新增）**：
+   - 凡是玩家看得见的东西（不只限 UI 和 Visual/Feel，哪怕 Logic 故事改了画面也算），**哪怕在 `qa.level: minimal` 也不豁免**：直接进改动场景截屏存到 `production/qa/evidence/<story-slug>/`，用 `review-receipts.sh hash` 把改动文件的内容哈希打进 `stamp.txt`，再亲自打开图片对照验收标准看一遍。最后只能输出一行纯文本 `Run result:`（`OBSERVED` / `NOT VERIFIED` / `N/A`，且 `N/A` 必须说清为什么真的不可见，拿“这是个 Logic 故事”糊弄会被 `/story-done` 直接拒收）。
+   - **如果是从 `/prototype` Grow 出来的 Web 工程**（检测 `production/qa/evidence/grow-<name>/replay.args` 存在），每个故事做完不管什么类型，都要再跑一遍 `npm run build:single` + `bash .claude/scripts/one-shot-grow.sh replay <name> --as story`，拿同一颗随机种子和同一串按键把游戏重跑一遍，把新截图 `story.png` 和基准图摆在一起看：
+     - `match yes` → `Same-seed run: SAME — nothing broke`；
+     - **`match no`（或冒出新报错）**：不管开没开 `autonomous` 自动模式，**强制停下来把差异和两张截图甩给你看**——问你“这个故事改了同种子回放结果，是你想要的吗？”你点头才调 `one-shot-grow.sh accept <name>` 刷新基准；你说不是，故事直接打回 `INCOMPLETE` 等修复。
 
-## 第六步：构造简报
+## 第七步：收尾账本
 
-简报是整个链路里最像"工程"的部分。它不粘贴文档，只给路径和要点：
-
-1. 故事文件本身，含验收标准、边界、QA 用例。
-2. 每个需求 ID 在注册表里的匹配行，原文是权威。
-3. ADR 的决策摘要和实施说明，**内联**，不给 ADR 路径。
-4. 控制清单里对应层的规则，按章节摘。
-5. `project.yaml` 的命名规范和注入的 `perf_budgets` 行。
-6. 故事里测试证据的路径。
-
-然后是测试要求，按 `qa.level` 分三档：
-
-- minimal：明确告诉代理"不要写测试文件，测试证据在此档豁免"。这句话必须说出来，因为"省略一行"和"忘了要求"对代理来说无法区分。
-- standard：测试与代码同时写，每条验收标准至少一个测试函数。禁止随机种子、时间依赖断言、外部 IO。
-- full：同上，且每条标准都必须覆盖，`/story-done` 遇到未覆盖会阻断。
-
-最后是输出契约：改了哪些文件、写了哪些测试函数、有没有问题或阻塞、是否完成。边界也写明：只在解析出的代码根下写代码，只在测试根下写测试；代码根未解析就什么都不写；不做一次性抽象；不为不可能发生的情况写错误处理；不为了让测试通过而特判。
-
-## 第七步：检查产物而不是读报告
-
-Phase 6 的第一条规则是：先看文件在不在。
-
-> 代理报告里点名的文件如果在磁盘上不存在，这一步就是失败的，不管报告写得多流畅。
-
-这条规则来自 `error-recovery-protocol.md` 的"触发器 0"。文档描述了一种具体的失败形态：并行的子代理做了大量工作，然后返回一段像样的开场白，没有路径、没有摘要、没有 BLOCKED 标记，也没有写任何文件。父会话读到这段文字，以为阶段完成了，实际上半个并行阶段消失了。
-
-所以判断依据是产物，不是转录。
-
-## 第八步：解析检查与运行观察
-
-解析检查因引擎而异，Godot 的命令写得很具体：
-
-```bash
-godot --headless --path . --import
-godot --headless --path . -s res://.claude/scripts/godot-parse-check.gd -- res://<changed.gd>
-```
-
-第二条退出码 1 表示有脚本没加载，输出里的 `PARSE FAIL:` 会点名是哪个。技能特别提醒：不要用 `--check-only`，只跑 `--import` 也不算解析检查。
-
-引擎二进制不存在时，结果必须写成 `parse NOT VERIFIED — engine binary not available`，不允许读一遍代码就断言"应该能解析"。
-
-运行观察针对玩家能看到的故事。步骤是：直接启动到故事改动的场景，截图保存到 `production/qa/evidence/<story-slug>/`，用 `review-receipts.sh hash` 给改动文件打内容哈希，存成 `stamp.txt`，然后打开图片与验收标准比对。
-
-最后只输出一行：
-
-```
-Run result: OBSERVED — <屏幕上是什么>
-Run result: NOT VERIFIED — <原因>
-Run result: N/A — <为什么没有可观察内容>
-```
-
-`N/A` 的原因不能是"这是个逻辑故事"，因为逻辑故事也可能有可见结果。这个限制防止用类型标签逃避观察。
-
-## 第九步：收尾
-
-Phase 7 输出固定结构：改动文件、测试证据、验证命令与结果、逐条验收标准、偏差、引擎风险、阻塞。然后把实际改动写入故事的 `## Files` 段，替换计划清单。
-
-再写会话检查点。检查点包含更新日期、分支、当前任务、下一步、阻塞项、进行中的文件、运行结果、未决问题。它是下次会话恢复工作的唯一依据。
-
-最后一行是收尾块，三行，状态词只有 Implemented、INCOMPLETE、BLOCKED 三种。
+Phase 7 按固定模板出总结（包含改动文件、测试证据、验证命令和退出码、逐条验收标准、偏差、引擎风险、阻塞项、以及 v1.3.0 新增的 `Own calls`），用 `md-section.sh replace` 把实际改动文件覆写进故事的 `## Files`（绝不走 shell 重定向，免得绕过写入检查 Hook），再用 `session-state.sh checkpoint` 覆写 `active.md` 检查点（带上 `Run result:`、`Same-seed run:` 和 `Own calls:` 传给下一棒 `/story-done`），最后落上标准收尾块。
 
 ## 常见误解
 
-误解一：代理说完成就是完成。检查点在产物：文件、测试、解析结果、截图。
-
-误解二：解析通过等于能运行。解析只说明代码能加载，不说明行为正确，所以还要运行观察。
-
-误解三：测试文件存在等于测试通过。`/dev-story` 和 `/story-done` 都只检查存在性，通过与否要用户自己跑测试套件，仓库在提示里明确要求用户先跑再关闭故事。
+- **误解一：`/dev-story` 跑完就等于故事验收通过了。** 不是。它只管把代码写出来、过解析/冒烟/截屏和同种子回放，并把真相打包进检查点；真正逐条核对验收标准和签字关闭是下一章 `/story-done` 的事。
+- **误解二：测试文件存在就代表单元测试全绿。** 在 Godot / Unity / Unreal 路线下，`/dev-story` 明确提醒你：“去跑你的测试套件确认新测试通过，再敲 `/story-done`——它只查测试文件在不在，不替你跑。”
+- **误解三：Grow 出来的项目改了一个新功能，同种子回放报 `match no` 就说明写炸了。** 不一定。新功能本来就可能改变游戏流程，所以框架不是直接判死刑，而是把“具体哪一行状态、哪一帧画面变了”亮到你面前，由你拍板这是“预期新行为（更新基准）”还是“改坏了老逻辑（打回返工）”。
 
 ## 练习
 
-1. 在模板仓库上运行 `story-facts.sh --all`，解释每列含义。
-2. 假设引擎是 Unity，代码根解析失败，`/dev-story` 应该做什么？为什么不能默认写到 `src/`？
-3. 为一个 Visual/Feel 故事列出从实施到关闭需要的全部证据。
+1. 在 `qa.level: minimal` 下，为什么 `/dev-story` 的程序员简报必须显式写一句“不要写测试文件”，而不能把测试那一节直接删掉？
+2. 为什么在 Web 工程的 Phase 6 里，规则专门强调“光跑 `npm run build:single` 不算通过解析检查，必须跑 `npm run smoke`”？
+3. 设想一个 Grow 出来的塔防游戏，你刚做完“新增冰冻塔”的故事，同种子回放（老按键脚本压根没造冰冻塔）却报了 `match no` 且显示第 12 秒怪物位置偏了。你应该选 accept 还是打回？这说明同种子回放抓住了什么问题？
 
 ## 答案提示
 
-1. 第一列是统计项，第二列是数量，第三列是搜索路径。全零表示 `production/epics/` 下没有故事。
-2. 停止写入并报告未解析的代码根。默认到 `src/` 在 Unity 里不会编译，工作会安静失效。
-3. 代码与测试、解析检查结果、运行到目标场景的截图、截图目录下的 `stamp.txt`、`<story-slug>-evidence.md` 里的签字行，以及 `/story-done` 的逐条核对表。
+1. 因为 `.claude/agents/gameplay-programmer.md` 里写着“必须为所有玩法逻辑写单元测试”。如果简报里干脆不提测试，子代理就会照通用人设去写单测，导致行为跟 `minimal` 档位打架。
+2. `build:single` 只证明 TypeScript 编译和打包没报错，看不出页面在真实浏览器里能不能启动、会不会一进页面就抛运行时异常白屏；`npm run smoke` 会把打包产物拉进 Playwright 跑 `@boot` 冒烟，才算验了启动。
+3. 必须打回。老按键脚本根本没触发新功能，同种子回放结果本应 100% 一致；位置偏移说明你在写冰冻塔时意外动到了随机数消耗顺序（`rng()` 调用次序）或公共寻路/帧步进逻辑，这就是回归 bug，同种子回放正好把它抓了个现行。

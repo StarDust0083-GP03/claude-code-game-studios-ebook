@@ -1,115 +1,85 @@
-# 第 16 章 验证与演进：这门框架怎么证明自己没坏
+# 第 16 章 验证与演进：Markdown 写的框架，怎么证明自己没改坏
 
-## 场景
+## 场景：你魔改了两个技能，怎么知道没把流程拆散架
 
-你改了 `dev-story` 的一个阶段，加了两条规则。怎么知道没把技能改坏？
+CCGS 本身就是个鼓励你按自己团队习惯魔改的模板。今天你改了 `/dev-story` 的 Phase 5，明天删掉了两个用不上的角色。普通代码改完有编译器和单元测试兜底，可技能和角色全是 Markdown 文本，没有编译器报错——改坏了往往要等跑崩一次真实任务才发现。
 
-普通软件有编译器、单元测试、集成测试。技能是 Markdown，没有编译器。CCGS 的答案是一套针对技能本身的静态检查和行为规格。
+CCGS 给出的解法，是把一套专门测“框架自己”的质检设施随模板一起打包在根目录的 **`studio-tests/`** 里，用 `/skill-test` 和 `/skill-improve` 两个技能驱动。
 
-## studio-tests
+## `studio-tests/` 里面到底装了什么
 
-`studio-tests/` 是"测试技能和角色"的目录，不是测试游戏的。README 说得很明确：随模板发布，也理应随模板发布，因为模板本来就是给你改的。
+先说清一个极容易混淆的目录分工：**`tests/` 是留给你放游戏测试的（刚克隆的模板里没有框架自测代码）；`studio-tests/` 才是用来测 CCGS 自己的技能和角色的。**
 
-内容分四块：
+打开 v1.3.0 仓库里的 `studio-tests/`，结构非常完整：
+- **`catalog.yaml`**：主花名册，登记了全部 **75 个正式技能**（v1.3.0 同步把旧名规格改成了 `next-step.md`、`project-settings.md`、`write-changelog.md`，并新增了 `cut.md`）和 **49 个角色**，追踪各自的优先级、分类以及上次测试时间与结果。
+- **`quality-rubric.md`**：按技能类别（`gate`、`review`、`authoring`、`readiness`、`pipeline`、`analysis`、`team`、`sprint`、`utility`）定好的通过门槛。
+- **`skills/` 与 `agents/`**：每个技能、每个角色各有一份行为规格文件（spec），比如 `gate-check.md` 里写死了要检查它读没读评审模式、solo 模式下是不是跳过全部门禁、是不是禁止自动推进阶段。
+- **`templates/`**：给你自己新写的技能/角色抄的规格模板。
+- **`results/`**：跑完测试后存放报告的目录（注意它没进 `.gitignore`，不想提交结果的话要自己加进去）。
 
-- `catalog.yaml`：74 个技能和 49 个角色的主登记表，记录覆盖率。
-- `quality-rubric.md`：按类别的通过标准。
-- `skills/`：每个技能一份行为规格，按 gate、review、authoring、readiness、pipeline、analysis、team、sprint、utility 分类。
-- `agents/`：每个角色一份规格，按总监、主管、专家、引擎、运营、QA 分类。
+文档甚至诚实地列了一张“如果嫌占地方把 `studio-tests/` 删了会怎样”的账单：
+- `/skill-test static`：照常能跑（只读技能文件本身）；
+- `/skill-test audit`：降级（报找不到花名册）；
+- `/skill-test spec` 和 `category`：直接罢工；
+- `/skill-improve`：失去按类别的打分循环。
 
-驱动它的是两个技能：`/skill-test` 和 `/skill-improve`。
+## 四种检查模式与 `skill-lint.sh` 静态体检
 
-## 四种测试模式
+驱动这套质检的 `/skill-test` 分四个模式：`static`（7 项结构检查）、`spec`（逐条对照行为规格）、`category`（对照类别打分表）、`audit`（出覆盖率全景报告）。其中唯一纯靠脚本确定性运行的，是 `static` 背后的 `.claude/scripts/skill-lint.sh`。
 
-`/skill-test` 有四个模式：
+拿它扫单个技能（比如 `bash .claude/scripts/skill-lint.sh dev-story`），它会把技能的主 `SKILL.md` 连同 `references/` 下的拆页一起读完，吐出 7 项冷冰冰的客观数据：
+1. `check1`：YAML 前置元数据齐不齐、`name` 和目录名对不对得上；
+2. `check2`：阶段数和二级标题数；
+3. `check3`：出现了哪些判决词（如 `BLOCKED`、`COMPLETE`、`FAIL`）；
+4. `check4`：有没有写“写入前请示批准”以及声明的写工具；
+5. `check5`：最后一节标题是什么、点名了哪些下一步技能；
+6. `check6`：有没有用独立上下文（`context: fork`）；
+7. `check7`：参数提示（`argument-hint`）和参数解析段落。
 
-`static` 做七项结构检查，读技能文件，不运行技能。可以测单个，也可以 `all`。
+全仓扫描 `bash .claude/scripts/skill-lint.sh all` 时，脚本最后一行一定会报实测读到的总数（在 v1.3.0 上，因为目录里有 75 个正式技能 + 3 个旧名转发层 `help`/`settings`/`changelog`，磁盘上一共 78 个 `SKILL.md`）。如果某个文件读失败，脚本专门打印 `NOT_READ` 且不计入已读计数，绝不拿“扫了 70 个没报错”冒充全仓通过。同时它依然只报观察数据，具体“这样算不算合格”留给 `/skill-test` 去判。
 
-`spec` 拿行为规格逐条评估技能或角色。比如 `gate-check` 的规格会检查它是否读取评审模式、是否在 solo 模式跳过全部门禁、是否禁止自动推进。
+## 写门禁与技能的五条铁律（`.claude/rules/skill-authoring.md`）
 
-`category` 按类别标准评估。gate 类技能的关键指标是"读取评审模式、full/lean/solo 三种总监小组、不自动推进"。
+全仓库最值得打印出来贴墙上的规范，其实是 `.claude/rules/skill-authoring.md` 里的五条铁律——哪怕你不做游戏，只要给公司写 AI Workflow 或 CI 门禁，条条都扎心：
 
-`audit` 输出覆盖率全景：哪些技能有规格、上次测试时间、结果。
+1. **任何门禁必须有“无法评估（`NOT ASSESSED`）”这一档，而且必须排在通过之上、失败之下。** 只有“通过/失败”二态的系统，最终一定会把所有拿不到数据、脚本没跑起来的情况偷偷塞进“通过”。
+2. **缺了配置或路径时，绝不准默认成最宽松的值。** 写默认值前先问一句：“这个键框架里到底有没有人写？”如果压根没人写，你随手写的默认分支就是所有真实项目的线上行为（比如代码根解析不出绝不默认 `src/`）。
+3. **跳过的检查必须在大屏输出里明说，不能只写在源码注释里。** 注释只有作者看，用户看到空输出只会以为检查跑过且全绿。
+4. **没法溯源的事实不准断言，且发现的缺口必须接进最终判决里。** 光在正文里提醒一句“缺少某项证据”却不影响最终 Verdict，那条提醒就只是一行没人看的装饰废话。
+5. **覆盖范围靠动态派生，绝不手写死白名单。** 手写死名单只要以后新增一个技能就会立刻漏检（像 `/project-settings` 动态 grep `effects-map.md` 的 `> ### RESERVED` 标题，就是这条铁律的活教材）。
 
-README 还给了一张"删掉 studio-tests 会怎样"的表：static 仍能跑，audit 退化为报告没有目录，spec 和 category 直接失效，`/skill-improve` 失去类别通过项。这张表是很好的依赖说明范例：说清每个模式的具体代价，而不是笼统说"会影响测试"。
+旁边还附了两条特别毒辣的实操守则：
+- **别写“碰巧就能为真”的断言**：比如检查字符串里有没有 `unity`，结果连 `community` 这个词都能命中导致假通过。
+- **没亲眼见过它报错的门禁，根本不算门禁**：写完一个检查后，必须动手搞一次**变异测试**——故意把被守护的东西改坏，亲眼看着门禁红灯报警，再改回来变绿。
 
-## 静态检查的实测
+## 升级策略：别拿 `--allow-unrelated-histories` 给自己找几百个冲突
 
-`skill-lint.sh` 是 static 模式七项检查的脚本实现。在快照上对 `dev-story` 运行：
+随着上游从 v1.2.0 演进到 v1.3.0，`UPGRADING.md` 总结出了一套非常务实的升级分流：
 
-```
-skills	1	.claude/skills
-skill	dev-story	files=3	lines=389
-check1	dev-story	frontmatter=ok	missing=-	name=match
-check2	dev-story	phases=7	h2=11	h2_total=11
-check3	dev-story	verdicts=FAIL:1,BLOCKED:6,COMPLETE:1	assessment_words=readiness
-check4	dev-story	may_i_write=1	before_writing=0	approval=0	ask_write_lines=5	write_tools=Write,Edit
-check5	dev-story	last_section=Phase 7: Summary, files, checkpoint	skills_named=story-done,dev-story,code-review,architecture-decision	next_phrases=6/5
-check6	dev-story	context_fork=no	phases=7	h2=11
-check7	dev-story	hint=[story-path]	args_section=-
-checked	1 of 1
-```
+- **同源 clone 的项目（有共同 Git 历史）**：直接加 `template` 远程，`git fetch --tags template main && git merge template/main`，只解决你改过的 `CLAUDE.md`、`project.yaml` 等少数冲突即可。
+- **ZIP 下载或独立 `git init` 的项目（无共同历史）**：**千万别硬敲 `git merge --allow-unrelated-histories`**，没有共同祖先会让 Git 把几百个模板文件全标成冲突。正确姿势是选策略 A2——用 `git checkout template/main -- .claude UPGRADING.md CHANGELOG.md studio-tests docs/engine-reference/web ...` 只精准拉框架目录到暂存区，看清 `git diff --cached --stat`，把你自己魔改过的文件逐个 `git checkout HEAD -- <file>` 救回来，`CLAUDE.md` 和 `project.yaml` 手工 `git diff` 合并。
+- **升级顺序别搞反**：像 v1.2.0 → v1.3.0 这种更新，必须**先把 `.claude/hooks/` 和 `.claude/scripts/` 覆盖到位，再去合 `.claude/settings.json`**，不然新 `settings.json` 指向的新脚本还没落盘，每次调用都会报错。
 
-七项分别看：前置元数据完整、阶段数、判决词、写入前是否请求批准、最后一节是否指向下一步、是否设置独立上下文、参数提示。
+## 诚实说清楚：这套验证到底覆盖不到什么
 
-对全部技能运行，最后一行是 `checked 74 of 74`。这个数字很重要：它证明脚本读到了全部 74 个，而不是读了 60 个然后报告完成。脚本头部专门说明，读不到的技能会打印 `NOT_READ`，且不计入已读，避免"没检查看起来像通过"。
-
-注意脚本输出的定位：它只给事实，不给判决。`check3` 列出判决词出现次数，至于 `BLOCKED` 出现六次是否过多，由 `/skill-test` 判断。这符合 `CLAUDE.md` 里"辅助脚本只输出观察"的承重约定。
-
-## 五条义务
-
-`.claude/rules/skill-authoring.md` 是写技能和门禁时的核心规则，只有五条，但每条都指向同一类失败。
-
-第一条：每个门禁判决都要有"无法评估"值。三态判决会把所有未知压成一个断言。排序要讲究：它必须高于通过，低于失败。
-
-第二条：缺失值不能默认成宽松值。尤其在框架里没人写那个键的时候。先问谁设置它；一个有读无写的键，默认分支就是每个项目的实际行为。
-
-第三条：跳过的步骤要自己说出来。在输出里说，不只写在源码注释里。
-
-第四条：不要断言无法溯源的事实，并且把缺口接到判决上。只标记不接线，缺口就只是注释。
-
-第五条：门禁要派生覆盖集，不要枚举。白名单会漏掉后来新增的技能。如果类别无法机械判定，就在门禁里说明原因并保留清单，同时记录扩展义务。
-
-还有两条门禁细则：断言一个不可能偶然为真的东西，比如不要检查单词 "unity"，因为文件路径里可能包含它，而 "community" 也包含；以及"没亲眼见它失败过的门禁不算门禁"，要故意破坏一次，确认它失败，再恢复。
-
-最后一条最容易被跳过。写了一个检查，跑一次显示通过，就以为它能工作。实际上它可能永远通过。仓库要求做一次变异测试：把被守护的东西改坏，看检查是否报警。
-
-## 版本与升级
-
-`project.yaml` 里有 `framework.version: 1.2.0` 和 `last_upgraded: 2026-10-19`。`UPGRADING.md` 描述从上游拉取更新的流程，`migrate-v1-config.sh` 处理旧配置迁移。
-
-这套机制的风险在第 15 章讨论过：模板更新会带入可执行脚本。从工程角度，升级还需要三件事：
-
-1. 升级前看 `.claude/hooks/` 和 `.claude/scripts/` 的 diff。
-2. 升级后跑 `/skill-test static all`，确认 74 个技能都能读。
-3. 跑一次真实的 `/dev-story` 或团队流水线，确认配置解析和行为规格没有漂移。
-
-只有第一步是自动的。后两步需要真实项目。
-
-## 这套验证覆盖不到什么
-
-`skill-test` 的所有模式都只读文件，不运行技能。README 明确写了：每个模式都读文件，没有一个运行技能。所以它证明的是结构合规和规格存在，不是行为正确。
-
-真正的行为验证需要真实会话。仓库在 `studio-tests/catalog.yaml` 里记录"上次规格测试"和"上次类别测试"的时间与结果，但这些记录也依赖人手动触发。
-
-还有一类缺口：文档提到的根目录 `tests/` 在快照里不存在。`release-review` 文档说框架自己的测试套件覆盖了配置解析链，但这次克隆的仓库里没有那个目录。这不影响使用，但说明"有测试"和"测试在当前分发里"是两件事。读的时候要区分。
+必须点破两个真实边界：
+1. **`/skill-test` 全部四个模式都只读文件，从来不真的执行技能。** 连 `spec` 和 `category` 也是让大模型读完 `SKILL.md` 和规格文档后做“纸面代码审查”。它能保证结构规范没写漏、规矩没改丢，但**不能证明模型在真实多轮对话里 100% 乖乖照做**。
+2. **模板仓里没有随附框架自己的单元测试套件。** `studio-tests/` 放的是针对技能/角色的静态与规格检查；而类似测试 `yaml-helper.sh` 几十个 YAML 边界、验证 `validate-commit.sh` 各种 shell 嵌套的自动化单测脚本，并没有打包进公开分发模板里（这也是为什么本书下一章专门用独立 Python 写了 17 个单测来亲手验证核心约束）。
 
 ## 常见误解
 
-误解一：`/skill-test static` 通过就说明技能能正常工作。它只检查结构，不执行技能。
-
-误解二：规格测试是自动化的。它需要模型读规格、逐条判断，结果依赖模型的理解。
-
-误解三：`studio-tests/` 是可选装饰。删掉它，spec 和 category 两个模式直接失效。
+- **误解一：`/skill-test static all` 全过，说明我魔改的技能跑起来绝对没问题。** 错，它只验静态结构，不跑真实会话。
+- **误解二：根目录的 `studio-tests/` 是用来测我写的游戏代码的。** 不是。游戏测试放 `tests/`（或 `Assets/Tests/` 等引擎测试根），`studio-tests/` 只测 CCGS 自己的技能和角色。
+- **误解三：把 `studio-tests/` 删干净能让仓库更清爽且没副作用。** 会直接弄废 `/skill-test spec` 和 `category` 两个模式。
 
 ## 练习
 
-1. 对任意一个技能运行 `skill-lint.sh`，解释七项检查各自的用途。
-2. 为一个你写的门禁设计一条"无法评估"路径，并说明它在判决排序中的位置。
-3. 选择一个现有检查，做一次变异测试：破坏它守护的对象，确认它失败，再恢复。
+1. 如果你给自己的项目改写了一个技能，按 `skill-authoring.md` 的五条铁律，设计一次最小“变异测试”来确认你加的检查门禁真的有效。
+2. 为什么 `/skill-test spec` 即使通过，也不能完全替代用真实游戏跑一遍 `/dev-story`？
+3. 假设你是从 ZIP 下载的 CCGS v1.2.0 启动了项目，现在想升到 v1.3.0，为什么 `UPGRADING.md` 严禁直接把 `project.yaml` 和 `CLAUDE.md` 也放进 `git checkout template/main -- ...` 命令里？
 
 ## 答案提示
 
-1. 前置元数据完整性、阶段结构、判决词覆盖、写入前批准、结尾指向下一步、上下文隔离、参数提示。它们共同保证技能可被发现、可被执行、可被交接。
-2. 例如"文件存在但无法读取"应返回 NOT ASSESSED，而不是通过或失败。它排在通过之上、失败之下，理由是无法评估没有建立良好证据，但已知失败更可操作。
-3. 例如把一份 JSON 数据文件故意写坏，运行 `validate-commit.sh` 的对应路径，确认得到 `exit 2`；恢复文件再跑一次确认通过。
+1. 比如在技能里加了“禁止硬编码密钥”或“坏 JSON 必须阻断”的检查后，先故意构造一份坏 JSON 或假密钥提交/写入，确认脚本或门禁确实触发 `exit 2` 或打出 `BLOCKED`；恢复正常后再跑一遍确认放行。
+2. `spec` 是大模型读文本做静态对照，只能验证“步骤和规则写进去了”，验证不了真实执行时的工具权限弹窗、脚本跨平台兼容、上下文压缩后的遗忘率，以及模型在复杂代码里的实际遵循度。
+3. 因为 `git checkout template/main -- <file>` 会整文件覆盖，直接把你自己配好的 `engine.name`、`modes.rigor`、`project.goal` 和 `CLAUDE.md` 里的技术栈/引擎引用一行不剩全洗白；这两个文件必须保留本地版，只看 `git diff` 手工合入新结构。

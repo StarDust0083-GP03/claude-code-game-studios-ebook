@@ -1,139 +1,123 @@
-# 附录：源码索引、术语与核验路线
+# 附录：v1.3.0 源码索引、实测数据、术语与核验命令
 
-## 快照
+## 锁定快照
 
 | 字段 | 值 |
 |---|---|
-| 仓库 | Donchitos/Claude-Code-Game-Studios |
-| 提交 | 05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418 |
-| 日期 | 2026-10-19 |
-| 框架版本 | 1.2.0 |
-| 许可 | MIT |
-| 本书采集日期 | 2026-10-31 |
+| 上游仓库 | `Donchitos/Claude-Code-Game-Studios` |
+| 版本 | `v1.3.0`（"Make me a game"） |
+| 固定提交 | `abc0de79d6ceb0b5d7aa693945849b3937afbe6a` |
+| 上游发布日期 | `2026-11-09` |
+| 开源许可 | MIT |
+| 本书采集日期 | `2026-11-21` |
 
-## 每章源码入口
+## 逐章源码入口
 
-| 章 | 主要文件 |
+| 章 | 主要对照文件 |
 |---|---|
-| 前言 | `README.md`、`LICENSE`、`project.yaml` |
+| 前言 | `README.md`、`CHANGELOG.md`、`UPGRADING.md`、`project.yaml` |
 | 01 需求 | `CLAUDE.md`、`docs/COLLABORATIVE-DESIGN-PRINCIPLE.md`、`.claude/docs/coding-standards.md`、`.claude/rules/*.md` |
-| 02 架构 | `.claude/settings.json`、`.claude/docs/directory-structure.md`、`.claude/docs/context-management.md` |
-| 03 入门 | `.claude/skills/start/SKILL.md`、`.claude/scripts/project-state.sh` |
-| 04 配置 | `.claude/docs/config-resolution.md`、`.claude/hooks/yaml-helper.sh`、`.claude/docs/settings-guidance.md` |
-| 05 角色 | `.claude/agents/*.md`、`.claude/docs/agent-roster.md`、`.claude/docs/model-tiers.md`、`.claude/docs/coordination-rules.md` |
-| 06 技能协议 | `.claude/skills/dev-story/SKILL.md`、`.claude/docs/automation-modes.md`、`.claude/rules/skill-authoring.md` |
-| 07 产物 | `.claude/docs/templates/story.md`、`docs/architecture/tr-registry.yaml`、`design/registry/entities.yaml`、`.claude/docs/director-gates.md` |
-| 08 实施 | `.claude/skills/dev-story/SKILL.md`、`.claude/docs/code-root-resolution.md`、`.claude/docs/run-and-observe.md` |
+| 02 架构 | `.claude/settings.json`、`.claude/docs/directory-structure.md`、`.claude/hooks/validate-read.sh`、`.worktreeinclude` |
+| 03 入门 | `.claude/skills/prototype/SKILL.md` 及 `references/one-shot-*.md`、`.claude/skills/start/SKILL.md`、`.claude/skills/next-step/SKILL.md`、`.claude/skills/cut/SKILL.md`、`.claude/scripts/project-state.sh` |
+| 04 配置 | `.claude/hooks/yaml-helper.sh`、`.claude/skills/project-settings/SKILL.md`、`.claude/docs/config-resolution.md`、`.claude/docs/effects-map.md`、`project.yaml` |
+| 05 角色 | `.claude/agents/*.md`、`.claude/docs/coordination-rules.md`、`.claude/docs/model-tiers.md` |
+| 06 技能协议 | `.claude/skills/dev-story/SKILL.md`、`.claude/skills/help/SKILL.md`、`.claude/docs/automation-modes.md`、`.claude/docs/director-gates.md` |
+| 07 产物 | `.claude/docs/templates/game-brief.md`、`.claude/docs/templates/story.md`、`docs/architecture/tr-registry.yaml`、`design/registry/entities.yaml`、`docs/architecture/control-manifest.md` |
+| 08 实施 | `.claude/skills/dev-story/SKILL.md`、`.claude/scripts/story-facts.sh`、`.claude/scripts/one-shot-grow.sh`、`.claude/docs/run-and-observe.md` |
 | 09 验收 | `.claude/skills/story-done/SKILL.md`、`.claude/scripts/review-receipts.sh`、`.claude/docs/error-recovery-protocol.md` |
-| 10 Hook | `.claude/settings.json`、`.claude/hooks/*.sh`、`.claude/scripts/write-guard.sh`、`.claude/scripts/read-guard.sh` |
+| 10 Hook | `.claude/settings.json`、`.claude/hooks/*.sh`、`.claude/scripts/hook-input.sh`、`.claude/scripts/write-guard.sh`、`.claude/scripts/read-guard.sh` |
 | 11 注册表 | `.claude/scripts/registry.sh`、三份注册表 YAML |
 | 12 协作 | `.claude/skills/team-combat/SKILL.md`、`.claude/docs/coordination-rules.md`、`.claude/docs/error-recovery-protocol.md` |
-| 13 引擎 | `.claude/docs/code-root-resolution.md`、`docs/engine-reference/**`、`.claude/docs/technical-preferences.md` |
-| 14 上下文 | `.claude/docs/context-management.md`、`.claude/docs/templates/session-state.md`、`.claude/scripts/session-state.sh` |
+| 13 引擎与品类 | `.claude/engines/engines.tsv`、`.claude/engines/README.md`、`.claude/scripts/engine-row.awk`、`.claude/docs/code-root-resolution.md`、`docs/engine-reference/web/VERSION.md`、`.claude/genres/chipsets.yaml` 及 `chipsets/*.md` |
+| 14 上下文 | `.claude/docs/context-management.md`、`.claude/docs/templates/session-state.md`、`.claude/scripts/session-state.sh`、`.claude/scripts/rotate-session-state.sh` |
 | 15 安全 | `SECURITY.md`、`.claude/settings.json`、`.claude/skills/security-audit/SKILL.md` |
-| 16 验证 | `studio-tests/README.md`、`studio-tests/catalog.yaml`、`.claude/scripts/skill-lint.sh`、`.claude/skills/skill-test/SKILL.md` |
-| 17 实验 | `examples/mini_studio.py`、`examples/test_mini_studio.py` |
+| 16 验证与演进 | `studio-tests/README.md`、`studio-tests/catalog.yaml`、`.claude/scripts/skill-lint.sh`、`.claude/rules/skill-authoring.md`、`UPGRADING.md` |
+| 17 最小实验 | `examples/mini_studio.py`、`examples/test_mini_studio.py` |
 
-## 实测数据
+## v1.3.0 实测资产盘点
 
-以下数字来自快照的实际统计和脚本运行，不是文档转述。
+以下数字直接统计自 commit `abc0de79d6ceb0b5d7aa693945849b3937afbe6a`：
 
+```text
+.claude/agents/*.md            49
+  model: inherit               30
+  model: sonnet                16
+  model: opus                   3
+  model: haiku                  0
+.claude/skills/*/SKILL.md      78   (75 个正式技能 + 3 个旧名转发层 help/settings/changelog)
+.claude/rules/*.md             14
+.claude/hooks/*.sh             18
+  settings.json 注册命令       15   (另 3 个为 yaml-helper.sh / update-check.sh / log-instructions.sh)
+.claude/scripts/*              49   (含 .sh / .awk / .js 辅助脚本)
+.claude/docs/templates/*       74   (含 62 份主模板 + 指导文档与 one-shot-lean 起步文件)
+.claude/genres/*               73   (chipsets.yaml + 品类卡片 + mashups/art-direction/online-and-devices/sources)
+.claude/engines/engines.tsv    有   (Godot / Unity / Unreal / Web 四引擎统一表)
+studio-tests/                  有   (catalog.yaml + quality-rubric.md + 75 技能与 49 角色行为规格)
+settings.json permissions:
+  allow                        31   (含 v1.3.0 新增 28 条只读脚本与 yaml-helper 只读函数)
+  deny                        131   (Bash / PowerShell / Read / Edit 高危规则)
 ```
-.claude/agents/*.md        49
-  model inherit            30
-  model sonnet             16
-  model opus                3
-.claude/skills/*/SKILL.md  74
-.claude/rules/*.md         14
-.claude/hooks/*.sh         18
-  registered commands      15
-.claude/docs/templates/*   71
-```
 
-`skill-lint.sh all` 的最后一行是 `checked 74 of 74`。
+三个高频改名对照（v1.2.0 → v1.3.0）：
+- `/help` → `/next-step`
+- `/settings` → `/project-settings`
+- `/changelog` → `/write-changelog`
 
-`project-state.sh` 在未配置的快照上报告：`engine unset`、`code_root src detected`、`source_files 0`、`gdd_files 0`、`adr 0`、`stage unset`、`phase_inferred concept`。
+## 核心术语速查
 
-`resolve_config` 的默认输出：rigor minimal，workflow minimal，qa.level minimal，review_mode solo，team.size individual，automation collaborative。
+- **One-shot（单次可玩原型）**：v1.3.0 的默认主干道。通过 `/prototype` 问一轮最多约 8 个品类问题、生成一页 `design/game-brief.md`、在 `prototypes/<name>/` 搓出双击能玩的浏览器游戏并经无头浏览器冒烟后交接。
+- **Studio Mode（工作室模式）**：v1.3.0 对原有重型工程体系的统称——49 个角色、每系统一份 GDD、ADR、史诗/冲刺计划、阶段门禁与 9 条 `/team-*` 流水线（对应 `modes.rigor` 的 `standard` / `full`）。
+- **Chipset（品类卡片）**：`.claude/genres/chipsets/` 下的单品类知识卡，给 `/prototype` 提供分岔问题、手感变体、第一分钟默认要素和敌人种类底线。
+- **Grow（成长为工程）**：在原型拿到 `PROCEED` 后，通过 `one-shot-grow.sh` 分五步提交将其拷出并重构成根目录的 Vite + TypeScript + Vitest + Playwright 工程，原原型目录保持不动。
+- **Same-seed run（同种子回放）**：Grow 工程专享的回归锁。用同一颗随机种子和同一串输入脚本在改动前后回放游戏并对比状态行与截图，出现 `match no` 时强制停下来请人类裁决。
+- **Own calls（AI 自主拍板清单）**：v1.3.0 `/dev-story` 收集、`/story-done` 逐条追认的清单——列出设计与故事没写明、由程序员自己拍板的数值、时机、颜色、边界行为或界面文案，由人类选“保留（写入故事）”或“修改（直接 `BLOCKED`）”。
+- **Agent / Skill / Hook / Rule**：分别指 `.claude/agents/` 里的角色人设、`.claude/skills/` 里的斜杠剧本、`.claude/hooks/` 里挂在事件上的脚本、`.claude/rules/` 里按路径触发的编码规范。
+- **`rigor` / `workflow` / `qa.level` / `review_mode` / `team.size`**：`rigor` 是总档位入口，自动展开后面 6 个子开关（含 `docs.density` 和 `story_granularity`）；其中任何显式写入的值都会压过展开。
+- **Receipt（内容哈希回执）**：`review-receipts.sh` 打在 `stamp.txt` 里的文件内容哈希，用来戳穿“截完图又改过代码”的过期证据。
+- **`NOT ASSESSED`（无法评估）**：四态判决里排在 `COMPLETE` 之上、`BLOCKED` 之下的状态，专防把“没测过 / 缺输入”混成通过。
 
-`registry.sh validate`：三份注册表各 0 条目，五个检查项全为 0。
+## 自己动手核验路线
 
-## 术语
+想在本机亲手复核本书的每一项数据与机制，按下面顺序敲一遍：
 
-Agent（角色）：`.claude/agents/` 下的 Markdown 文件，定义职责、工具、模型、回合上限。派生成子代理后运行。
-
-Skill（技能）：`.claude/skills/<name>/SKILL.md`，斜杠命令的正文，包含前置元数据、注入命令和分阶段流程。
-
-Hook：`.claude/hooks/` 下的脚本，由 `settings.json` 注册到事件上，读标准输入 JSON，用退出码影响行为。
-
-Rule（规则）：`.claude/rules/` 下按路径生效的编码标准，编辑匹配路径时加载。
-
-rigor：一个前置设置，展开成六个子设置。默认 minimal。
-
-workflow：决定设计文档要写到多细，以及实施前必须存在哪些产物。
-
-qa.level：决定需要什么测试证据，与 workflow 分开设置。
-
-review_mode：full、lean、solo，决定总监评审门禁跑到什么程度。
-
-team.size：individual、small、studio，决定团队流水线派生多少角色。
-
-Story（故事）：最小执行单元，含验收标准、证据要求、文件范围、依赖。
-
-ADR：架构决策记录，带状态和版本，故事引用其摘要。
-
-TR-ID：需求编号，权威文本在 `docs/architecture/tr-registry.yaml`。
-
-Receipt（回执）：内容哈希戳，用于判断证据是否比代码旧。
-
-NOT ASSESSED：无法评估，排在通过之上、失败之下。
-
-## 核验路线
-
-想自己验证书中的结论，按这个顺序：
-
-1. 克隆固定提交，统计文件数：
+1. 检出固定提交并复核资产数：
 
 ```bash
 git clone https://github.com/Donchitos/Claude-Code-Game-Studios.git
 cd Claude-Code-Game-Studios
-git checkout 05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418
-find .claude/agents -name '*.md' | wc -l
-find .claude/skills -name SKILL.md | wc -l
+git checkout abc0de79d6ceb0b5d7aa693945849b3937afbe6a
+find .claude/agents -name '*.md' | wc -l        # 49
+find .claude/skills -name SKILL.md | wc -l      # 78 (75 + 3 shims)
+find .claude/rules -name '*.md' | wc -l         # 14
+find .claude/hooks -name '*.sh' | wc -l         # 18 (15 registered)
+find .claude/genres -type f | wc -l             # 73
+cat .claude/engines/engines.tsv
 ```
 
-2. 看配置解析：
+2. 实跑配置解析与项目状态：
 
 ```bash
 bash .claude/hooks/yaml-helper.sh resolve_config
 bash .claude/hooks/yaml-helper.sh resolve_setting modes.workflow
-```
-
-3. 看项目状态和注册表：
-
-```bash
 bash .claude/scripts/project-state.sh
 bash .claude/scripts/registry.sh validate
 ```
 
-4. 看技能结构：
+3. 实跑技能静态检查与内容哈希回执：
 
 ```bash
 bash .claude/scripts/skill-lint.sh dev-story
-bash .claude/scripts/skill-lint.sh all | tail -1
-```
+bash .claude/scripts/skill-lint.sh all | tail -n 3
 
-5. 看证据回执：
-
-```bash
 f=$(mktemp); echo a > "$f"
 bash .claude/scripts/review-receipts.sh hash "$f" > "$f.stamp"
 bash .claude/scripts/review-receipts.sh check "$f.stamp"
 echo b >> "$f"
 bash .claude/scripts/review-receipts.sh check "$f.stamp"
+rm -f "$f" "$f.stamp"
 ```
 
-6. 跑本书的实验：
+4. 跑本书配套的最小教学模型与 17 个单元测试：
 
 ```bash
 cd examples
@@ -141,20 +125,6 @@ python3 -m unittest -v test_mini_studio.py
 python3 mini_studio.py demo
 ```
 
-7. 官方语义对照：Claude Code Hooks 文档（`https://code.claude.com/docs/en/hooks`）用于确认退出码和事件行为。Hook 语义会随版本变化，移植前以你当前版本的文档为准。
+## 许可与声明
 
-## 未覆盖的问题
-
-本书没有回答这些问题，它们需要真实项目和真实计费：
-
-- 一次完整游戏开发的实际 token 成本。
-- standard 与 full 档位在真实项目上的质量差异。
-- 多代理并行时的冲突率和返工率。
-- 模型对这套长提示词的实际遵循率。
-- 在 Unity 或 Unreal 项目上的端到端表现。
-
-作者自己的对照实验只覆盖了四个小游戏和一次盲评，样本很小，书中引用时保留了它的原始结论和局限。
-
-## 上游许可与本书声明
-
-上游模板采用 MIT 许可。本书是独立撰写的静态研究，不是上游官方文档，也不代表作者观点。书中的批评、改进建议和实验代码由本书作者负责。阅读器样式与构建脚本参考了本地电子书项目，仅用于排版与检索。
+上游 CCGS 采用 MIT 许可，其仓库、文档与脚本版权归原作者 Donchitos 及贡献者所有。本书为独立源码分析与重编作品，非上游官方文档；正文与实验代码同样采用 MIT 许可，文中引用上游文件名、脚本与版本记录均用于技术解读与核验。

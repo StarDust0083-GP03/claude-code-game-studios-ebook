@@ -1,126 +1,98 @@
-# 第 10 章 Hook：十五个检查点里谁真的能拦住
+# 第 10 章 Hook：十五个检查点里，到底谁真的能拦住
 
-## 场景
+## 先卸妆：挂了 15 个 Hook，不等于有 15 道门禁
 
-你在故事文件上执行一次 Edit，把 `Status: Ready` 改成 `In Progress`。写入发生前，`validate-write.sh` 收到一条 JSON，里面有工具名、文件路径和新内容。它检查这个文件是否属于"永不覆盖"清单、配置是否写到该写的位置、原型目录有没有被生产代码引用。发现问题时它打印一段警告，然后退出码为 0。
+不少人一看到 `.claude/settings.json` 里满满当当注册了 15 条 Hook 命令，下意识就觉得：“稳了，AI 乱改文件、乱推代码肯定全被 Hook 拦住了。”
 
-同一时刻，你试图整篇读取一份 60 KB 的设计文档。`validate-read.sh` 拒绝，退出码 2，把文件的所有标题和行号打给你。
+真把这 15 个脚本一个个翻开看退出码，真相会让你凉半截：**15 条注册命令里，真用 `exit 2` 拍桌子的只有 3 处，而且其中 1 处还是写完之后才喊返工。**名头最唬人的 `validate-write.sh` 和 `validate-push.sh`，永远返回 `exit 0`——纯属口头劝阻。
 
-两个 Hook，一个劝阻，一个拦住。这一章把 15 个注册命令逐个归类。
+把这件事彻底拆透，才不会对着一个根本不拦人的警报器产生虚假安全感。
 
-## 注册表
+## 15 条注册命令 vs 18 个脚本的全景账
 
-`.claude/settings.json` 的 `hooks` 段把命令挂到事件上。快照里共有 15 条命令，分布在 8 个事件：
+`.claude/hooks/` 目录里躺着 **18 个** `.sh` 脚本，但 `.claude/settings.json` 注册了 **15 条**命令，挂在 8 类事件上：
 
-| 事件 | 命令 | 数量 |
+| 生命周期事件 | 注册脚本 | 真实威力 |
 |---|---|---|
-| SessionStart | `session-start.sh`、`detect-gaps.sh` | 2 |
-| PreToolUse（Bash/PowerShell） | `validate-commit.sh`、`validate-push.sh` | 2 |
-| PreToolUse（Write/Edit） | `validate-registry.sh`、`validate-write.sh` | 2 |
-| PreToolUse（Read） | `validate-read.sh` | 1 |
-| PostToolUse（Write/Edit） | `validate-assets.sh`、`validate-skill-change.sh` | 2 |
-| Notification | `notify.sh` | 1 |
-| PreCompact | `pre-compact.sh` | 1 |
-| Stop | `session-stop.sh` | 1 |
-| SubagentStart | `log-agent.sh` | 1 |
-| SubagentStop | `log-agent-stop.sh`、`validate-agent-artifact.sh` | 2 |
+| `SessionStart` | `session-start.sh`、`detect-gaps.sh` | 展示检查点、缺口和版本更新提醒（纯信息，v1.3.0 超时升到 20s） |
+| `PreToolUse`（Bash / PowerShell） | `validate-commit.sh`、`validate-push.sh` | **窄阻断**（仅数据 JSON 坏了或无 Python 时 `exit 2`）/ 仅警告 |
+| `PreToolUse`（Write / Edit） | `validate-registry.sh`、`validate-write.sh` | 仅警告（永远 `exit 0`） |
+| `PreToolUse`（Read） | `validate-read.sh` | **硬阻断**（超 40 KB 整篇读取直接 `exit 2`） |
+| `PostToolUse`（Write / Edit） | `validate-assets.sh`、`validate-skill-change.sh` | **写后反馈**（写坏数据 JSON 用 `exit 2` 拍回模型）/ 仅提醒 |
+| `Notification` | `notify.sh` | Windows PowerShell 弹窗通知（其他系统空操作） |
+| `PreCompact` | `pre-compact.sh` | 只记日志（不阻断压缩） |
+| `Stop` | `session-stop.sh` | 异步后台归档 `active.md` 与 git 活动（`async: true`，不卡回复） |
+| `SubagentStart` | `log-agent.sh` | 记子代理启动审计日志 |
+| `SubagentStop` | `log-agent-stop.sh`、`validate-agent-artifact.sh` | 记停止日志 / 核对简报点名产物是否落盘（仅告警） |
 
 ![十五个注册命令按事件分组，只有少数会阻断](../../wiki/assets/diagrams/hook-map.svg)
 
-`hooks/` 目录里另外有三个脚本没有注册：`yaml-helper.sh` 是被 source 的库，`log-instructions.sh` 和 `update-check.sh` 需要手动或由其他脚本调用。所以"15 个 Hook"和"18 个脚本"都对，口径不同。
+另外 3 个没注册在 `settings.json` 里的脚本分别是：`yaml-helper.sh`（给全仓 `source` 的核心配置库）、`update-check.sh`（被 `session-start.sh` 调用的版本更新后台检查器）、`log-instructions.sh`（留给你按需自己挂载的指令诊断脚本）。
 
-## 能拦住的
+## 唯一真用 `exit 2` 的三处
 
-真正能阻断的有三处。
+1. **`validate-read.sh`（真硬拦）**：全仓唯一一个在动作发生前直接拦人的验证 Hook。蹲在 `design/`、`docs/architecture/`、`production/session-state/` 门口，只要模型不带 `offset` / `limit` 想硬吞超 40 KB 大文档，直接 `exit 2` 拒读，并把最多 40 个章节标题和行号打在 stderr 里教它分段读。拒绝的同时给清替代路径，模型绝不会卡死。
+2. **`validate-commit.sh`（极窄硬拦）**：只在暂存区包含 `assets/data/`、`Assets/Data/`、`Content/Data/` 等路径下的 JSON 文件，且 JSON 语法坏了（或机器没装 Python 没法验）时 `exit 2` 拦停提交。至于硬编码数值、GDD 缺节、无主 TODO，统统只追加警告然后 `exit 0` 放行。顺便一提，v1.3.0 修了个社区报上来的真 bug（#155）：以前没有 Python 的机器上 `git commit -m "msg" -a` 会漏掉跟在提交信息后面的 `-a` / `--all`，导致修改的数据文件没经检查直接进了提交，现在已经补齐识别。
+3. **`validate-assets.sh`（写后拍桌子）**：挂在 `PostToolUse` 上，触发时文件其实已经落盘了，根本撤不回。那它为什么还要在写坏 JSON 时 `exit 2`？脚本头部写得特别通透：**在 PostToolUse 里，`exit 1` 的报错只给用户看，模型根本不知道自己写坏了会接着往下走；而 `exit 2` 会把 stderr 作为可操作反馈直接拍回模型脸上，逼它立刻把刚写坏的 JSON 修好。**（至于 Godot `assets/` 下的大小写命名违规，它只发警告走 `exit 0`；Unity 和 Unreal 的资产目录故意不检查下划线命名，因为那两家本来就用 PascalCase，乱报警告只会把人逼疯。）
 
-`validate-read.sh` 用 `exit 2` 拒绝超限的整篇读取。它是唯一一个在 PreToolUse 阶段硬拦的验证 Hook。拒绝时它不是简单说"不行"，而是列出标题和行号，告诉模型该怎么分段读。这符合"拒绝要给替代路径"的原则。
+## 只劝不拦的 Hook，到底值不值钱
 
-`validate-assets.sh` 在 PostToolUse 阶段对无效 JSON 用 `exit 2`。注意 PostToolUse 发生在写入之后，文件已经落盘，所以它不是"阻止写入"，而是"让模型看到自己写坏了"。脚本头部把这件事说得很清楚：
+`validate-write.sh` 头部白纸黑字写着 `exit 0 always = advisory (it warns, never blocks)`。它其实干了超多活：查有没有覆盖受保护文件（`EPIC.md`、`project.godot`、引擎参考文档等）、配置枚举对不对、是不是往 `project.local.yaml` 写了锁死键、原型和正式代码有没有互相 import、本地化冻结期有没有改文案、子代理是不是越界改了不该动的文件。
 
-> PostToolUse Hook 无法阻断，写入已经发生。唯一的问题是通知谁，而退出码决定这个：exit 1 只给用户看，模型以为写干净了继续往下走；exit 2 把 stderr 作为可操作反馈交给模型，它能修正刚写的文件。
+它还有个挺聪明的技术细节：`Edit` 工具发给 Hook 的 JSON 里只有 `old_string` 和 `new_string`，没有改完后的完整文件。所以脚本先调 `.claude/scripts/hook-input.sh --new <tmp>` 在临时文件里模拟拼出改完后的新内容，再交给 `write-guard.sh` 检查；万一重建失败，依赖文件内容的规则会明说“没检查”，只跑依赖路径的规则，绝不拿“没跑成”冒充“检查通过”。
 
-`validate-commit.sh` 的阻断范围很窄：只有暂存了 `assets/data/`、`Assets/Data/`、`Content/Data/` 等路径下的 JSON，且校验失败或无法校验时才 `exit 2`。其余检查，包括 GDD 章节完整性、硬编码数值、无主 TODO，都只是追加到警告列表，最后 `exit 0`。
+同样，`validate-push.sh` 盯住了往受保护分支推送以及 `git tag`、`git merge`、`gh release`、`butler push`、`steamcmd +run_app_build` 这些高风险发布动作——但它也是只告警不阻断（注释里甚至贴心地写好了“你要改成硬拦，把输出 JSON 那行换成 `echo ... >&2; exit 2` 就行”）。
 
-## 只提醒的
+## 三个踩过血坑才长出来的工程细节
 
-`validate-write.sh` 是最容易被高估的一个。它的名字像守门员，实际行为写在文件头：
+读这 15 个 Hook 的源码注释，简直像在翻原作者的线上故障复盘本，有三个坑自己写 Hook 时千万别再踩一遍：
 
-```
-exit 0 always = advisory (it warns, never blocks)
-```
+### 坑一：往 `stderr` 打印再 `exit 0`，等于对着空气拉警报
 
-它检查的项目不少：故事文件是否被覆盖、配置枚举是否合法、本地配置是否写了不可本地覆盖的键、评审模式是否被钉死、原型目录与生产代码是否互相引用、字符串冻结期间是否改了文案、子代理是否越界写文件。
+早期的写法是脚本检查到问题后，往 `stderr` 打一行警告，然后 `exit 0` 放行。结果 Claude Code 碰到 `exit 0` 时，根本不把 `stderr` 拿给用户和模型看，全塞进调试日志里了——忙活半天，两边谁都没看见。
 
-每一项都有真实价值，但它们全部走警告通道。`skill-authoring.md` 要求"跳过的步骤要自己说出来"，这个脚本遵守了：无法检查时会打印 `Write check skipped: ...`，而不是安静放行。
+后来统一改成调 `yaml-helper.sh` 里的 `hook_warn`，往 `stdout` 吐结构化 JSON：用 `systemMessage` 弹给用户看，用 `hookSpecificOutput.additionalContext` 塞进模型上下文，两边这才真收得到。自己给 Claude Code 写 Hook 时，第一件事一定是测通“哪条输出通道谁看得见”。
 
-`validate-registry.sh`、`validate-agent-artifact.sh`、`validate-skill-change.sh` 同样是建议级。`validate-push.sh` 更直接：它检测到你在往受保护分支推送时，输出一段 JSON，其中 `additionalContext` 会作为上下文给模型看，`systemMessage` 给用户看。脚本里甚至留了一行注释，说明如果要改成阻断，把 `printf` 换成 `echo` 加 `exit 2` 即可。
+### 坑二：v1.3.0 的 Bash / PowerShell 双语多义包装（救 Windows 用户的命）
 
-## 记录型的
+翻开 v1.3.0 的 `.claude/settings.json`，你会看到所有 15 条 Hook 命令都长得特别怪：
 
-SessionStart 的两个脚本负责恢复和体检。`session-start.sh` 读 `production/session-state/active.md`，把检查点区域预览出来；这个区域被要求控制在 25 行以内，可以原样展示。`detect-gaps.sh` 检查项目缺什么。
-
-`pre-compact.sh` 在上下文压缩前触发，提醒保存状态。官方文档里 PreCompact 的退出码 2 可以阻止压缩，但这个脚本没有使用阻断，只是提示。
-
-`log-agent.sh`、`log-agent-stop.sh`、`session-stop.sh` 写审计日志。`notify.sh` 在权限提示或空闲提示时发桌面通知，Windows 走 PowerShell，其他平台目前是空操作。
-
-## Hook 的输入从哪来
-
-每个 Hook 从标准输入拿到一段 JSON。`validate-write.sh` 的注释给出了两种形态：
-
-```json
-{"tool_name":"Write","tool_input":{"file_path":"...","content":"..."}}
-{"tool_name":"Edit","tool_input":{"file_path":"...","old_string":"...","new_string":"...","replace_all":false}}
+```text
+echo `# <#` >/dev/null; bash "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-read.sh"; exit $? #> ; exit 0
 ```
 
-编辑操作没有完整的新文件内容，只有替换片段。所以 Hook 调用 `hook-input.sh --new <tmp>` 重建写入后的文件，再交给 `write-guard.sh` 判断。重建失败时，依赖内容的规则（配置、原型）会明确说没有检查，依赖路径的规则继续运行。
+这串看似乱码的咒语，是个教科书级的 **Bash / PowerShell 双语多义（polyglot）技巧**：
+- 在装了 Bash（Linux / macOS / Windows Git Bash）的机器上，`` `# <#` `` 是一次空命令替换，整行等价于老老实实运行 `bash ".../validate-read.sh"; exit $?`（后面的 `#>` 被当成注释）；
+- 而在**没装 Git Bash 的 Windows 机器**上，Claude Code 会回退用 PowerShell 跑 Hook 命令。PowerShell 把 `<# ... #>` 整段识别成块注释直接跳过，只执行末尾的 `; exit 0`（`session-start.sh` 还会顺手打印一句“没找到 Git Bash，Hook 已关闭，请安装 Git for Windows”）。
 
-这段设计体现了一个原则：检查器要能区分"检查通过"和"没检查"。`write-guard.sh` 输出的第一行是 `checked <n> rules`，让调用方知道跑了多少条。
+以前用裸 `bash "..."` 写法时，只要 Windows 用户漏装了 Git Bash，每一次 Read、Write、Edit 和 Bash 调用都会被失败的 Hook 直接卡死，整套仓库完全没法用。改完之后，没装 Git Bash 的机器体面降级并大声告警，装了的机器行为一字节不变。
 
-## 警告怎么送达
+### 坑三：别在每个工具调用上白白起子进程，也别被目录名误伤
 
-早期的做法是往 stderr 打印，然后 `exit 0`。问题在于，退出码 0 的 stderr 只进调试日志，用户和模型都看不到。脚本注释里记录了这个问题：警告被写进了没人读的地方。
+因为 `PreToolUse` 和 `PostToolUse` 会在**每一次**工具调用时触发，为了不拖慢交互，v1.3.0 给 `validate-commit.sh`、`validate-push.sh`、`validate-read.sh`、`validate-write.sh`、`validate-assets.sh`、`validate-skill-change.sh` 全部重写了纯 Bash 内建字符串匹配的快速逃生门：
+- 只截取 `"tool_input"` 后面的字段做粗筛——以前匹配整个 JSON payload 时，如果你的项目放在 `~/GitHub/gamedesign/` 这种父目录里，`cwd` 和 `transcript_path` 自带 `git` 和 `design` 字样，导致**每一次**读代码和跑命令都躲不开完整解析，白白起一堆 `jq` / `awk` 子进程。
+- 现在只要不沾边，纯 Bash 几毫秒直接 `exit 0` 溜走。同时每个脚本开头都按固定优先级定位项目根（当前目录有 `project.yaml` → 当前目录有 `.claude/` 且目录本身不叫 `.claude` → `CLAUDE_PROJECT_DIR` → 脚本自身相对路径），防在子目录启动时把日志写进歪树里。
 
-现在的做法是调用 `yaml-helper.sh` 里的 `hook_warn`，输出一段结构化 JSON，包含 `systemMessage` 和 `hookSpecificOutput.additionalContext`。前者给用户，后者给模型。没有这个函数时回退到 stderr。
+## 权限层 vs Hook 层：各管一摊
 
-这个细节值得学：Hook 的输出通道比输出内容更容易出错。一条正确的警告发到错误的通道，等于没发。
+`.claude/settings.json` 里的 `permissions.deny` 是宿主直接执行的硬闸门，专挡明确危险的命令（`rm -rf`、`git push --force`、`sudo`、读写 `.env`、改 `.uasset`/`.umap`）；但字符串通配符很难看懂复杂的 shell 语法。像 `validate-push.sh` 和 `validate-commit.sh` 花了近两百行 `awk` 去拆 `&&` 管道、跳过引号和 here-doc 正文、识别 `git -C "my repo"`、处理 PowerShell 单引号 here-string，就是为了干字符串匹配干不了的上下文判断。
 
-## 官方语义对照
-
-用 Context7 查 Claude Code 官方 Hook 文档，确认了几条与本仓库实现对应的规则：
-
-- PreToolUse 的 `exit 2` 阻断工具调用，stderr 作为阻断原因反馈给模型。
-- PostToolUse 的 `exit 2` 不能撤销已发生的操作，只把 stderr 作为反馈交给模型。
-- 其他非零退出码属于非阻断错误，通知里带 stderr 的第一行。
-- `exit 0` 且输出合法 JSON 时，JSON 字段生效。
-
-这解释了为什么 `validate-assets.sh` 明知写入已经发生还要用 `exit 2`：它要的不是撤销，而是让模型修。
-
-同时要提醒：Hook 的语义在不同版本间有过调整，尤其是"谁看到 stderr"。仓库里 `validate-assets.sh` 的注释认为 `exit 1` 只给用户看，这和某些版本文档的描述不完全一致。移植这套 Hook 时，应以你当前 Claude Code 版本的官方文档为准，并写一个最小实验确认。
-
-## 权限与 Hook 的分工
-
-`settings.json` 的 `permissions.deny` 是另一层。它列出 `rm -rf` 的各种变体、`git push --force` 的各种变体、`sudo`、`chmod 777`、读 `.env`、编辑 `.uasset` 等。
-
-这一层由宿主执行，比 Hook 更硬，但它只匹配命令字符串。`validate-push.sh` 的存在说明作者不完全信任字符串匹配：它额外解析 git 命令的分段、处理 `&&` 链接、跳过引号里的文本、识别 `git -C` 等变体，才判断这是不是一次推送。
-
-两层的分工可以概括为：权限层挡住明确危险的动作，Hook 层处理需要上下文判断的规则。
+注意一点：Claude Code 官方对 Hook 退出码和通道语义随版本偶尔会有细微调整，移植这套 Hook 时，拿你本机当前版本跑一次最小测试验证 `exit 0` / `exit 2` 谁看得见，比背文档更靠谱。
 
 ## 常见误解
 
-误解一：有 Hook 就有安全边界。15 个里只有 3 处会阻断，其余是提醒或记录。
-
-误解二：PostToolUse 能撤销坏写入。它只能在写入后告知，修复要靠模型或人。
-
-误解三：Hook 一定在项目根运行。脚本开头都有一段根目录解析逻辑，因为工作目录不对会读写错误的树。这段逻辑的优先级是：当前目录有 `project.yaml` 或 `.claude/` 就用当前目录，否则用 `CLAUDE_PROJECT_DIR`，最后回退到脚本自身位置。
+- **误解一：Hook 拦住了所有违规写入。** 15 条里只有 3 处有 `exit 2`，写入前真正硬拦的只有超 40 KB 读保护和坏 JSON 提交；`validate-write.sh` 只是提醒。
+- **误解二：PostToolUse 发现写坏文件可以自动回滚。** 撤不回，落盘已经发生了；`exit 2` 的价值在于强行把报错塞回模型脑子里，让它立刻自己修。
+- **误解三：Hook 挂这么多，每次调工具肯定卡得要死。** 不沾边的调用在脚本开头几行就会靠纯 Bash 模式匹配秒退，不启动 `jq`、Python 或外部子进程。
 
 ## 练习
 
-1. 从 `settings.json` 数出所有 Hook 命令，按"阻断、反馈、记录"分类。
-2. 解释 `validate-read.sh` 为什么要在 stderr 里列出标题和行号，而不是只说文件太大。
-3. 把 `validate-push.sh` 改成真正阻断受保护分支推送，需要改哪一行？会带来什么后果？
+1. 如果你想把 `validate-push.sh` 对 `main` 分支的推送从“警告”改成“硬阻断”，要改哪几行？改成硬阻断后，碰到紧急 hotfix 怎么处理？
+2. 解释一下 `validate-commit.sh` 为什么特意跳过普通 `cat <<EOF` 的 here-doc 正文，却**坚决不跳过** `bash <<EOF` 或 `python - <<EOF` 的 here-doc 正文？
+3. 为什么 `validate-write.sh` 的快速逃生门要先剥掉项目根目录前缀，再去匹配路径里有没有 `Assets`、`Source`、`design`？
 
 ## 答案提示
 
-1. 阻断：`validate-read.sh`；反馈：`validate-assets.sh`、`validate-commit.sh`（仅数据 JSON）；其余为提醒或记录。
-2. 拒绝必须给出可执行的替代路径，否则模型会重试同样的读取。列出标题让它能按范围读，一次拒绝就完成教学。
-3. 把输出 JSON 的那段替换为 `echo "BLOCKED: ..." >&2; exit 2`。后果是所有受保护分支的推送都被硬拦，包括紧急修复；需要额外的绕过机制或人工在本地改脚本。
+1. 把告警分支里的 `hook_warn`（退出码 0）改成往 `stderr` 打印阻断原因并以 `exit 2` 退出。代价是紧急修复也会被硬拦，通常需要人工在普通终端执行，或给脚本加一条显式环境变量逃生口。
+2. `cat <<EOF` 里写 `git commit` 只是文档文字或提交说明，不应该误触发检查；但 `bash <<EOF` 或 `python - <<EOF` 里的内容会真被解释器当命令执行，跳过它就成了绕过检查的漏洞。
+3. 因为用户的工程完全可能放在 `C:/Source/my-game` 或 `/home/me/design-work/proj` 下；不剥掉项目根前缀，绝对路径里永远带着关键字，导致全仓库每一次无关的 Write/Edit 都逃不掉完整解析。

@@ -81,8 +81,8 @@ def main() -> None:
         '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"', 1)
     files["cover.xhtml"] = xhtml(
         "封面",
-        f'<section class="volume-cover"><p>源码驱动的框架解剖</p><h1>Claude Code 游戏工作室</h1>'
-        f'<h2>从提示词到可验收流水线</h2><p>独立源码研究 · 2026-10-31</p></section>', css)
+        f'<section class="volume-cover"><p>源码驱动的框架解剖 · v1.3.0</p><h1>Claude Code 游戏工作室</h1>'
+        f'<h2>从提示词到可验收流水线</h2><p>独立源码研究 · CCGS v1.3.0 · 2026-11-21</p></section>', css)
     files["style.css"] = css
     manifest += [
         '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
@@ -97,8 +97,8 @@ def main() -> None:
 <dc:title>{html.escape(TITLE)}</dc:title>
 <dc:creator>{AUTHOR}</dc:creator>
 <dc:language>zh-CN</dc:language>
-<dc:date>2026-10-31</dc:date>
-<meta property="dcterms:modified">2026-10-31T00:00:00Z</meta>
+<dc:date>2026-11-21</dc:date>
+<meta property="dcterms:modified">2026-11-21T00:00:00Z</meta>
 </metadata>
 <manifest>
 {"".join(manifest)}

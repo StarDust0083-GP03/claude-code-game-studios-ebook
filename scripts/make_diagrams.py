@@ -70,7 +70,7 @@ def four_layers():
 def config_chain():
     b = [t(8, 10, "第一个合法值胜出；非法枚举继续下落", 8.2, 600, "var(--muted)")]
     cards = [
-        ("project.local.yaml", "仅白名单：review_mode / team.size", True),
+        ("project.local.yaml", "15 键个人体验白名单（rigor 族仅 review_mode / team.size）", True),
         ("project.yaml", "显式值优先于落盘镜像", False),
         ("legacy 镜像", "review-mode.txt / production/stage.txt", False),
         ("rigor 展开", "六个子设置；显式值继续压过展开", False),
@@ -82,7 +82,7 @@ def config_chain():
         if i < len(cards) - 1:
             b.append(arrow(210, y + 44, 210, y + 56, color="var(--line)"))
     b.append(t(8, 322, "输出值和来源：project.yaml / rigor:standard / default", 9, 400, "var(--muted)"))
-    b.append(t(8, 338, "读白名单必须等于 /settings --local 的写白名单", 9, 400, "var(--amber)"))
+    b.append(t(8, 338, "读白名单必须等于 /project-settings --local 的写白名单", 9, 400, "var(--amber)"))
     return svg(350, "配置解析链", "".join(b))
 
 

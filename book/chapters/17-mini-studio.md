@@ -1,14 +1,20 @@
-# 第 17 章 最小实验：用一百多行 Python 复刻四条约束
+# 第 17 章 最小实验：用两百行 Python 亲手跑通四条核心约束
 
-## 场景
+## 场景：纸上看懂不算数，换门语言写一遍才真算摸透
 
-读完十多万字的规则和几十个 Bash 脚本，很多机制仍然停留在"看懂了"的层面。要确认真的理解，最好的办法是用另一种语言把它重写一遍。
+前面十六章拆了几十个脚本和上百条规则，光靠眼睛看，很容易产生“我都懂了”的错觉。验证自己到底有没有吃透一套工作流框架，最硬核的办法就是**脱离 Claude Code、脱离游戏引擎，用自己顺手的语言把最值钱的几条约束从头复刻一遍，再写单元测试把边界全捅一遍**。
 
-这一章给出一个 `examples/mini_studio.py`，约两百行，标准库，无依赖。它不复制上游脚本，只复刻四个决定行为走向的约束：配置解析、故事状态、验收判决、证据时效。配套 17 个单元测试，全部通过。
+本书配套的 `examples/mini_studio.py` 就是这么一个零依赖教学模型（约 209 行纯 Python 标准库），外加 `examples/test_mini_studio.py` 里的 **17 个单元测试**。它不是要把几千行 Bash 脚本照抄成 Python，而是专门拎出决定 CCGS 靠谱程度的五根硬骨头亲手跑一遍：
 
-## 配置解析
+1. 配置优先级瀑布与非法枚举下落；
+2. 代码根不瞎猜（歧义直接报未解析）；
+3. 故事显式状态转移与“跳过提问不等于同意”；
+4. 四态判决排序（未知压过通过，失败压过一切）；
+5. 内容哈希证据回执与注册表 ID 永不回收。
 
-模型里的 `resolve()` 接收三张表：项目配置、本地配置、遗留配置。
+## 约束一：配置解析与非法枚举下落
+
+模型里的 `resolve()` 接三张字典——`project`、`local`、`legacy`——严格按瀑布顺序往下找第一个合法值：
 
 ```python
 def resolve(project, local=None, legacy=None):
@@ -28,15 +34,13 @@ def resolve(project, local=None, legacy=None):
             # rigor expansion, then documented default
 ```
 
-它保留了三个关键行为：
+四个单元测试钉死了最容易写歪的角落：
+- `test_local_wins_for_whitelisted_key`：白名单里的 `modes.review_mode` 本地优先；
+- `test_local_ignored_for_protected_key`：锁死键 `qa.level` 就算写进 `local` 也被无视，乖乖走 `project.yaml`；
+- `test_explicit_key_beats_rigor_expansion`：`rigor: full` 下显式钉死 `modes.workflow: minimal`，展开不准盖掉它；
+- `test_invalid_enum_falls_through`：手滑写了 `modes.rigor: strict`，不报错崩掉也不拿 `strict` 硬用，而是记进 `_notes` 后回落到 `minimal`。
 
-1. 本地配置只对白名单键生效。测试 `test_local_ignored_for_protected_key` 把 `qa.level` 同时写进两张表，断言结果来自项目配置。
-2. 显式值优先于 rigor 展开。测试 `test_explicit_key_beats_rigor_expansion` 在 `rigor: full` 下显式写 `workflow: minimal`，断言 workflow 保持 minimal。
-3. 非法枚举回落而不是胜出。测试 `test_invalid_enum_falls_through` 用 `rigor: strict`，断言 workflow 变成 minimal，并且备注里点名了非法值。
-
-第三个行为最容易被写错。直觉写法是"读到就用"，但那样一个拼写错误会传播到所有技能，而错误配置往往比缺省配置更隐蔽。
-
-## 代码根解析
+## 约束二：代码根解析，有歧义就坚决不猜
 
 ```python
 def resolve_code_root(engine, dirs):
@@ -49,11 +53,9 @@ def resolve_code_root(engine, dirs):
     return None, "unresolved"
 ```
 
-三个测试覆盖三种情况：引擎优先、单一目录推断、两个候选目录时不猜。
+三个测试覆盖了三条路径：设了引擎就听引擎的、没设引擎且目录里只有一个候选根才推断、同时出现 `src` 和 `Assets` 时直接吐 `(None, "unresolved")`，绝不偷懒默认返回 `src`。
 
-第三个断言返回 `(None, "unresolved")`，而不是默认到 `src`。这是第 13 章那条规则的代码化：缺失值不能默认成宽松值。
-
-## 故事状态与"跳过不是同意"
+## 约束三：状态流转与“跳过不等于同意”
 
 ```python
 def start(self):
@@ -65,13 +67,9 @@ def start(self):
     return "started"
 ```
 
-`answer` 模拟用户对"我可以开始吗"的回复。只有明确同意才推进，`None`、空字符串、`"skipped"` 都停在原地。
+只有用户明确给出 `"yes"` 或 `"approved"` 才允许把故事推进到 `In Progress`；`None`、空字符串、或者弹窗被关掉返回的 `"skipped"` 统统原地踏步（`test_skipped_question_is_not_approval`）。同样，关故事时 `close()` 绝不接受 `UNKNOWN` 判决（`test_no_close_on_unknown`），必须全绿 `PASS` 且处于进行中状态才放行。
 
-对应的测试是 `test_skipped_question_is_not_approval`：调用 `start()`，断言返回包含 `waiting`，且状态仍然是 `Ready`。
-
-关闭也有守卫：`close()` 只在判决为 PASS 且状态是 In Progress 时生效。`test_no_close_on_unknown` 断言 UNKNOWN 判决被拒绝，状态保持 In Progress。
-
-## 判决排序
+## 约束四：四态判决排序
 
 ```python
 PASS, NOTES, UNKNOWN, FAIL = "PASS", "PASS_WITH_NOTES", "UNKNOWN", "FAIL"
@@ -88,11 +86,9 @@ def verdict(criteria):
     return PASS
 ```
 
-四个测试覆盖：失败压过未知、未知压过通过、延期算"带备注的通过"、全部覆盖算通过。
+逻辑短到只有 8 行，但三个单测直接锁死了整套验收门禁的灵魂：`FAIL` 压过 `UNKNOWN`，`UNKNOWN` 压过 `PASS`，只有合理延期 `DEFERRED` 才落进 `PASS_WITH_NOTES`。
 
-`RANK` 在演示里没有直接用，它表达的是排序关系：FAIL 最高，UNKNOWN 次之，NOTES，PASS。这正是 `skill-authoring.md` 第一条义务要求的排序：无法评估要高于通过，低于失败。
-
-## 证据时效
+## 约束五：内容哈希回执与编号不回收
 
 ```python
 def digest(path):
@@ -102,36 +98,28 @@ def evidence_state(stamp, paths):
     if not stamp:
         return ["RECEIPT_NONE"] + [f"NEW: {p}" for p in paths]
     ...
-```
 
-`receipt()` 给文件打内容哈希，`evidence_state()` 比对，输出五种状态：UNCHANGED、CHANGED、NEW、GONE、RECEIPT_NONE。
-
-测试里创建临时文件、打回执、修改、删除，依次断言 UNCHANGED、CHANGED、GONE。另一个测试断言没有回执时第一行是 RECEIPT_NONE，而不是空列表。
-
-最后一条很重要：没有回执时不能返回空结果，因为空结果会被读成"没有变化"。必须显式说"无法判断"。
-
-## 编号不回收
-
-```python
 def next_id(kind, seen):
     nums = [int(x.rsplit("-", 1)[-1]) for x in seen if x.rsplit("-", 1)[-1].isdigit()]
     return f"{kind}-{max(nums, default=0) + 1:03d}"
 ```
 
-测试给 `["story-001", "story-007"]`，断言结果是 `story-008`，不是 `story-002`。
+测试里在临时目录建一个 `combat.gd`、打完回执先测 `UNCHANGED`，往文件里多写一行立刻报 `CHANGED`，删掉文件立刻报 `GONE`；连“压根没有回执”也单独测了必须吐 `RECEIPT_NONE`，绝不返回空列表冒充“没变化”。编号生成器面对 `["story-001", "story-007"]` 铁定发 `story-008`，绝不捡漏回收 `story-002`。另外还有 `test_always_ask_survives_autonomous`，验证哪怕切到 `autonomous`，撞上 `file_deletions` 依然必须停下来问人。
 
-这条规则的成本是编号会稀疏，收益是历史引用永远指向同一对象。
-
-## 实际运行
+## 直接在本机跑一遍
 
 ```bash
-$ cd examples
-$ python3 -m unittest -v test_mini_studio.py
-...
-Ran 17 tests in 0.001s
-OK
+cd examples
+python3 -m unittest -v test_mini_studio.py
+# Ran 17 tests in 0.001s
+# OK
 
-$ python3 mini_studio.py demo
+python3 mini_studio.py demo
+```
+
+演示输出把所有机制摊在一屏里：
+
+```text
 config: {'docs.density': ('balanced', 'rigor:standard'), ...,
          'modes.review_mode': ('solo', 'project.local.yaml'), ...}
 invalid enum: ('minimal', 'rigor:minimal')
@@ -148,27 +136,24 @@ evidence stale: ['CHANGED: /tmp/.../combat.gd']
 ids: story-008
 ```
 
-输出本身就是一份行为清单。配置里 `review_mode` 来自本地文件，其余来自 standard 展开；非法 rigor 被忽略并回落到 minimal；两个候选目录被视为未解析；没有明确回答时故事不启动；UNKNOWN 不允许关闭；证据修改后被识别为过期。
+## 教学模型故意简化了什么（以及怎么把它升级到 v1.3.0）
 
-## 与真实实现的差距
+为了把代码压在两百行以内让你一眼看完，这份教学模型刻意省掉了上游 v1.3.0 里不少实战细节，而这些差距刚好是最好的动手练手题：
 
-这个模型刻意简化了几件事：
-
-- 上游用 Bash 和 awk 实现，为了在没有 Python 的环境里也能跑；模型直接用 Python。
-- 上游的配置解析还处理旧版镜像、Tab 缩进、BOM、CRLF、重复块合并；模型只保留优先级和枚举回落。
-- 上游的故事状态由技能流程维护，没有代码强制；模型把它写成了显式状态机，反而更严格。
-- 上游的证据检查用 git hash-object 或 sha1sum；模型用 sha256，语义相同。
-
-这些差距本身是练习材料。把任何一项补上，都会暴露新的边界情况。
+- **运行环境与解析器**：上游用 Bash + awk（部分调 Python 3）扛住了 macOS 老 Bash 3.2、Windows CRLF、UTF-8 BOM、Tab 缩进报错、重复块合并、块标量跳过；模型直接用 Python 字典跳过文本解析。
+- **v1.3.0 引擎表与自定义根**：上游已经在 `.claude/engines/engines.tsv` 里加上了 `Web` 引擎，并在第 0 步支持 `engine.code_root`（含 `.` 根目录和“非法不回退”）；模型里的 `resolve_code_root` 目前只写了三家引擎，还没加自定义根校验。
+- **完整本地白名单**：上游 `yaml-helper.sh` 的本地白名单有 15 个键；模型只示范了 `rigor` 族里的 2 个核心键。
+- **v1.3.0 的 `Own calls` 与同种子回放**：模型里的 `verdict()` 还没把“有未确认的 AI 自主拍板项”和“同种子回放 `CHANGED, not accepted`”接进 `FAIL` / `UNKNOWN` 门禁。
+- **故事状态机**：上游全靠技能纪律约束，模型反而用代码写成了更硬的显式状态机。
 
 ## 练习
 
-1. 给 `resolve()` 加旧版镜像支持，让 `review_mode` 可以从 `legacy` 表读到，并写一个测试断言优先级低于项目配置。
-2. 给 `Story` 加 `Blocked` 状态和一条解除阻塞的路径，要求解除时必须有明确的用户回答。
-3. 把 `evidence_state()` 扩展为支持目录参数，目录下的文件逐个比对，写测试覆盖新增文件和删除文件。
+1. 给 `examples/mini_studio.py` 的 `resolve_code_root()` 加上 v1.3.0 的 `web` 引擎和可选参数 `custom_root`（支持 `.`，若目录不存在或含 `..` 或指向 `.claude`/`docs` 则直接返回 `(None, "invalid")` 且不回退到引擎默认），并补 3 个单元测试。
+2. 扩展 `verdict()`，增加 `own_calls` 参数（每条带状态 `kept` / `change_requested` / `unanswered`）：只要有任何 `change_requested` 直接判 `FAIL`，有 `unanswered` 最高判 `UNKNOWN`，写测试验证优先级。
+3. 给 `Story` 增加 `Blocked` 状态的解锁方法 `unblock(answer)`，要求同样严格遵守“跳过不等于同意”，只有明确批准才回到 `Ready`。
 
 ## 答案提示
 
-1. 在循环里插入 `("legacy", legacy, None)` 一级，注意放在项目配置之后、展开之前；测试里同时写项目值和遗留值，断言来源是 `project.yaml`。
-2. `unblock(reason)` 只在 `status == "Blocked"` 且 `answer` 是明确同意时转为 `Ready`，其余返回 `waiting`。
-3. 用 `Path.rglob("*")` 展开目录，把相对路径作为键；新增文件报 NEW，回执里有但磁盘没有的报 GONE。测试可以用 `TemporaryDirectory` 创建两层结构。
+1. 在 `by_engine` 里补 `"web": "src"`；函数开头先判断 `custom_root`：如果不为空，校验非绝对路径、不含 `..`、不在框架保留目录集合中且存在于 `dirs`（或等于 `.`），不合法立刻 `return None, "invalid"`，切记不要 `continue` 到下面的引擎映射。
+2. 把 `change_requested` 并入 `FAIL` 分支判断，把 `unanswered` 并入 `UNKNOWN` 分支判断，即可复现 v1.3.0 `/story-done` Phase 5 和 Phase 7 的真实优先级。
+3. `if self.status != "Blocked": return "refused..."`；`if answer not in ("yes", "approved"): return "waiting..."`；通过后将 `self.status = "Ready"` 并返回 `"unblocked"`。

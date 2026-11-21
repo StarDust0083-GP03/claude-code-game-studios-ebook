@@ -1,126 +1,111 @@
-# 第 11 章 注册表：跨文档事实如何不漂移
+# 第 11 章 注册表：跨文档事实怎么管才不漂移
 
-## 场景
+## 场景：一只哥布林，三份文档写出三种血量
 
-三份设计文档都提到哥布林。战斗文档说它有 12 点生命，经济文档说掉落 3 枚金币，任务文档说它是"精英怪"。三周后战斗文档把生命改成 18，另外两份没动。等到实现时，程序员按哪份写？
+项目做了一个月，三份文档都提到了哥布林：战斗 GDD 写它 12 点血，经济 GDD 写它掉 3 个金币，任务 GDD 顺口写了句“12 血的精英怪”。两周后策划把哥布林调成 18 血，只改了战斗 GDD，另外两份没人记得动。等程序和 QA 进场，每个人看到的都是不同版本的真相。
 
-这类问题靠人工同步必然漂移。CCGS 的答案是把跨文档事实集中到注册表，其他文档引用而不是复制。
+靠人肉“记得同步改三处”肯定要翻车。CCGS 的办法很朴素：**凡是跨文档共享的硬事实，全部收进中央注册表；其他文档只准引用编号或名字，不准各自抄一遍。**
 
-## 三个注册表
+## 三张底账，各记各的
 
-仓库里有三份：
+仓库里一共三份 YAML 注册表：
 
-`design/registry/entities.yaml` 存游戏世界事实：实体、物品、公式、常量。文件头的规则很具体：
+1. **`design/registry/entities.yaml`（游戏世界底账）**：存跨系统的实体、物品、公式、全局常量。文件头把纪律写得很清楚——单份 GDD 内部自己玩的小公式不用登记；一旦登记**永不删除**（废弃标 `status: deprecated`）；改数值要留日期和修改原因注释；`source` 指明唯一权威 GDD，其他用到它的文档全挂在 `referenced_by` 列表里，绝不另起重复条目。
+2. **`docs/architecture/tr-registry.yaml`（需求底账）**：按 `TR-<system>-NNN` 编号存权威技术需求。故事里只挂 ID，写代码和验收时回表查最新需求原文。
+3. **`docs/registry/architecture.yaml`（架构底账）**：记系统分层、契约、目标帧率和 ADR 状态，是控制清单和架构评审的共同数据源。
 
-- 只登记跨系统边界的事实。单份 GDD 内部使用的公式不必登记。
-- 永不删除条目，用 `status: deprecated` 标记。
-- 值改变时更新值、写修改日期，并注释旧值和哪份 GDD 改的。
-- `source` 是权威 GDD，其他引用它的文档列在 `referenced_by`。
-- 新文档引用已有条目时追加路径，不新建重复条目。
+## 一个脚本统一三张表：`.claude/scripts/registry.sh`
 
-`docs/architecture/tr-registry.yaml` 存需求条目，编号 `TR-<system>-NNN`。故事引用 ID，评审时回表读最新文本。
+为了不让 75 个技能各自拿五花八门的 `grep` 去啃 YAML，所有读写核验全部收敛到 `.claude/scripts/registry.sh` 里，提供一组干净的子命令：
 
-`docs/registry/architecture.yaml` 存架构层面的状态、契约、系统、目标帧率、用途、模式。它是控制清单和架构评审的共同底稿。
+- `list`：按行摊开条目（可用 `--system` 过滤单个系统）；
+- `get`：按名字抓出完整条目和原始行；
+- `refs`：反向查图——给实体名查谁引用它，给 TR-ID 查哪些故事/史诗挂了它，给文档路径查所有指向它的条目；
+- `slice`：拉出某份 GDD 或 ADR 牵扯到的全部条目；
+- `validate`：全套体检——查重名、故事引用了不存在的 TR-ID、指向的文件路径丢了、状态值越界、缩进布局不对；
+- `compare`：比对改动前后的两份注册表，专抓“谁偷偷删了老条目”或“写进了非法状态”（`validate-registry.sh` Hook 背后调的就是它）；
+- `next-id`：发下一个可用编号。
 
-## 一个脚本，三种读法
+在空白模板仓里跑一遍 `bash .claude/scripts/registry.sh validate`，吐出整洁的 TSV 事实行：
 
-`.claude/scripts/registry.sh` 把三份注册表统一成一种读法。子命令有九个：
-
-- `list`：每个条目一行，可加 `--system` 只留某个系统的需求。
-- `get`：按名字取条目及其原始行。
-- `refs`：给名字返回它引用的路径，给需求 ID 返回引用它的故事或史诗，给路径返回所有引用该路径的条目。
-- `slice`：某个文件作为 source 或 gdd 或 adr 涉及的全部条目。
-- `validate`：重复名、故事引用了不存在的需求、路径不存在、状态越界、布局不支持。
-- `compare`：比较变更前后的注册表，列出被删除的条目和新增的非法状态。
-- `next-id`：给出下一号。
-
-在快照上跑 `validate`：
-
-```
-registry	entities	design/registry/entities.yaml	0
-registry	tr	docs/architecture/tr-registry.yaml	0
-registry	architecture	docs/registry/architecture.yaml	0
-checked	production/epics	0
-duplicate	0
-tr_unknown	0
-path_missing	0
-status	0
-layout	0
+```text
+registry        entities        design/registry/entities.yaml         0
+registry        tr              docs/architecture/tr-registry.yaml    0
+registry        architecture    docs/registry/architecture.yaml       0
+checked         production/epics        0
+duplicate       0
+tr_unknown      0
+path_missing    0
+status          0
+layout          0
 ```
 
-三份注册表都能读，条目数为 0，五个检查项都是 0。输出是 TSV，每行第一列是类别。脚本注释写明：它只输出观察，不输出判决。缺一个路径重不重要、故事能不能引用已废弃的需求，由调用技能决定。
+跑 `bash .claude/scripts/registry.sh next-id story stealth`，返回：
 
-`next-id` 的行为也实测过：
-
-```
-$ bash .claude/scripts/registry.sh next-id story stealth
-next	story	stealth	story-001	-	0
+```text
+next    story   stealth story-001       -       0
 ```
 
-格式是 `next <kind> <scope> <id> <highest> <count>`。最高号是 `-`，已见 ID 数为 0，所以下一号是 `story-001`。
+注意它依然死守那条规矩：**只吐事实，不判生死**。路径丢了算不算阻断、故事引用废弃需求该不该打回，全交回给上层技能结合当前档位去定。
 
-## 为什么 ID 只增不减
+## 为什么编号永远只增不减，绝不回收
 
-`next-id` 的规则是"见过的最大号加一"，不是"找最小空号"。脚本注释说明：删除或废弃过的 ID 永远不再发放。
+`next-id` 的算法不是“从 1 开始找第一个空号”，而是**“把见过的所有编号里最大的找出来加 1”**。就算 `story-002` 到 `story-006` 全被你删了，只要见过 `story-007`，下一个发出去的铁定是 `story-008`。
 
-这条规则看起来浪费编号，实际是审计需要。旧故事、旧评审、旧提交信息里都引用过 `TR-combat-007`。如果这个号被回收给另一条需求，历史记录会指向错误的对象，而且无法察觉。
+看起来编号会变得坑坑洼洼，但这是审计底线：以前的 git 提交信息、废弃故事、旧评审报告里早就写死了 `TR-combat-007`。要是把 007 回收再发给一条新需求，历史记录就会悄无声息地指鹿为马，连脚本都抓不出来。同样的道理，注册表本身是**只追加不删除**的，`validate-registry.sh` 只要发现你在 Write/Edit 里把老条目删了或改了编号，立刻拉响警告。
 
-`compare` 子命令也基于同样的假设：注册表是只追加的。它列出"旧表有、新表没有"的条目，因为正常变更不该删除条目。
+## 为什么宁可定死缩进规矩，也不用通用 YAML 库
 
-## 布局为什么这么严格
+点开 `registry.sh` 的源码，你会发现它压根没引 PyYAML，甚至不依赖 Python，而是拿 **Bash 3.2 + BWK awk** 硬解析。为了做到 macOS 自带老 Bash 也能零依赖直接跑，它立了一套严格的 `# LAYOUT:` 布局契约（还印在了三份注册表文件头里）：
 
-注册表是 YAML，但读取方式不是通用 YAML 解析器，而是一套固定布局规则：
+- 分组键顶格写在第 0 列，空列表写 `[]`；
+- 每个条目以 `- name: <name>`（或对应主键）开头，短横线在第 0 列或第 2 列，同一分组必须对齐；
+- 字段比短横线缩进两格；
+- 值里只要带了 `": "`（冒号加空格），必须用引号包起来；
+- `|` / `>` 开头的块文本，缩进更深的行归它。
 
-- 一个 section 是第 0 列的一个键，持有块列表；空时写 `[]`。
-- 一个条目以 `- name: <name>` 开头，短横线在第 0 列或第 2 列，同一 section 内必须一致。
-- 字段比短横线深两列，更深的行属于上一个字段。
-- 含 `": "` 的值必须加引号。
-- `|` 或 `>` 开头的是多行文本，比键更深的行都属于它。
+最狠的一条错误处理是：**只要碰上一行不符合布局规矩，脚本直接吐 `LAYOUT` 报错（带行号和正确写法），并且整份注册表一条都不读，绝不硬猜。**
 
-任何不符的行都报 `LAYOUT`，附行号和期望的写法，并且该注册表的条目全部不读，而不是猜。
+为什么不“凑合把能读的先读出来”？因为凑合读出半张表，上层做一致性检查时就会基于残缺数据给你判个“没有冲突”，比直接报错危险十倍。宁可大声罢工，绝不静默丢数据。
 
-为什么要放弃通用解析器？脚本头部给了一个理由：`bash 3.2` 和 `BWK awk` 兼容，无 Python 依赖。macOS 自带 bash 3.2，这个限制是真实的。用固定布局换取零依赖，代价是写错格式时条目会整份失效。
+## 对老版本历史脏数据的优雅宽容
 
-失效被设计成显式的。`LAYOUT` 行会明确告诉你哪一行不符合，而不是安静地少读几条。这就是 `skill-authoring.md` 第二条义务的实践：缺失值不能默认成宽松解释。
+死板归死板，碰到自家老版本留下的历史债，它的处理特别老道。v1.1.3 的 `/architecture-decision` 曾经在 `docs/registry/architecture.yaml` 里把被取代的状态写成：
 
-## 兼容旧格式
-
-脚本里有一个刻意的例外：架构注册表里早期版本写过 `status: superseded_by: ADR-NNNN`，没有给值加引号。
-
-严格按布局规则，这一行会被判为不支持。脚本选择读它，把状态读成 `superseded_by: ADR-NNNN`，同时输出一行 `UNQUOTED`，告诉你在哪一行、应该写成什么样。
-
-这个处理方式值得借鉴：对历史数据宽容读取，但把不规范之处明确报出来，让用户有机会修。既不因为一个旧格式让整份注册表失效，也不假装它完全合规。
-
-## 读取者清单
-
-`entities.yaml` 的文件头列了谁会读它，以及每条读法的 Grep 模式：
-
+```yaml
+status: superseded_by: ADR-NNNN
 ```
+
+没加引号，里面冒出两个冒号，按严格 YAML 和布局规矩都是非法的。如果一刀切整表拒读，所有升级上来的老项目当场瘫痪；如果默默吞掉，老毛病永远没人修。
+
+`registry.sh` 的折中办法是：**宽容读进来（正常解析状态），但同时吐一行 `UNQUOTED` 点名哪一行该补上引号**。老项目升级完照样能干活，又能按图索骥把历史债还清。
+
+## 谁写、谁读，直接贴在文件脑门上
+
+翻开 `design/registry/entities.yaml` 的文件头注释，你会看到一块像接口文档一样的“消费者声明”：
+
+```text
 WRITTEN BY: /design-system, /consistency-check, economy-designer, systems-designer
 READ BY:    /design-system, /consistency-check, /review-all-gdds, /design-review,
             /content-audit, /balance-check, /propagate-design-change, /asset-spec, ...
 ```
 
-这份清单的价值在于变更影响分析。要改注册表格式，先看谁在读；要新增一个读取方，先确认它的读法与现有布局兼容。
-
-`/propagate-design-change` 的读取方式特别有意思：它用 `referenced_by` 找出所有引用某个事实的文档，然后逐个评估影响。这是把"改一处要同步多处"从人的记忆变成了图遍历。
+甚至把每种常用查询对应的正则都贴在旁边。以后你想改注册表字段结构时，扫一眼文件头就知道会牵连哪几个技能；而 `/propagate-design-change` 干脆把“策划改了一个数值要通知谁”这件事，从靠人脑记变成了顺着 `referenced_by` 做图遍历。
 
 ## 常见误解
 
-误解一：注册表是给人看的文档。它主要是给脚本和技能读的，人只是维护者。
-
-误解二：可以随时清理无用条目。只能标废弃，因为历史引用仍然有效。
-
-误解三：格式错了脚本会猜。它会报 `LAYOUT` 并跳过整份注册表，避免基于半个文件做判断。
+- **误解一：注册表主要是给人当策划百科看。** 错，它首先是给脚本和技能机读的结构化底账，人只是维护和审批它的。
+- **误解二：需求砍掉了，直接把对应的 `TR-` 条目从文件里删干净更清爽。** 绝对不行，必须留着并标 `status: deprecated`，否则历史引用全变悬空，还会触发 `validate-registry.sh` 警告。
+- **误解三：YAML 格式写歪了两格没关系，脚本会自动纠偏。** 不会。`registry.sh` 撞到不合规缩进直接报 `LAYOUT` 并放弃读取整张表，逼你修干净。
 
 ## 练习
 
-1. 在副本里给 `entities.yaml` 加一个条目，字段缩进故意写错两格，运行 `registry.sh validate`，观察输出。
-2. 用 `registry.sh refs` 查询某个 GDD 路径，说明输出中 `how` 列可能出现哪些值。
-3. 解释为什么 `next-id` 不回收已删除的编号，并用一个具体场景说明回收的后果。
+1. 如果你在 `design/registry/entities.yaml` 里手写了一条新实体，不小心把字段缩进多敲了两格，跑 `registry.sh validate` 会看到什么现象？为什么说“读出 0 条”比“跳过出错的那一条继续读”更安全？
+2. 用 `registry.sh refs` 查一份战斗 GDD 的路径时，可能会看到哪些关系类型？这些关系对 `/propagate-design-change` 有什么用？
+3. 假设你正在把这套注册表机制抄到自己的后端微服务项目里，用来管跨服务的错误码或事件名，你会把哪些规则照搬过去、哪些可以简化？
 
 ## 答案提示
 
-1. 会得到 `LAYOUT` 行，带文件、行号、发现的和期望的布局，该注册表条目数为 0。
-2. `source`、`gdd`、`adr`、`referenced_by`，以及 `cited`（故事或史诗引用某个需求）。
-3. 假设 `TR-combat-007` 被删除后回收给了 `TR-ui-007`，旧故事仍写着 `TR-combat-007`，评审回表会读到完全不同的需求，而且没有任何报错。只增不减可以避免这种静默错配。
+1. 会吐出带具体行号和期望格式的 `LAYOUT` 报错行，并且把该注册表的读取计数置为 0。如果跳过坏行继续读，上层的重名检查和引用检查就会在缺了一块事实的前提下报“无冲突”，造成危险的假通过。
+2. 可能出现 `source`（权威来源）、`gdd`、`adr`、`referenced_by`（被动引用）以及 `cited`（被故事/史诗引用）。`/propagate-design-change` 正是靠这些边找出“改了这份文档必须同步评审哪些下游文档和故事”。
+3. “编号只增不减、废弃不删、集中脚本统一读写与校验、坏格式显式报错不瞎猜”这四条完全值得照搬；如果你的团队环境本来就有固定的 Python/Node 运行时，可以把手写 awk 布局解析换成标准 YAML/JSON Schema 校验，省掉手写缩进限制的维护成本。
